@@ -1,7 +1,7 @@
 # ESP32-S3 Super Mini Speed Advisor
 
 A compact GPS-based speed advisor that alerts you when a configurable speed threshold is exceeded.  
-Designed for the ESP32-S3 Super Mini (or Zero-style boards), GY-NEO6MV2 GPS, active buzzer, and multiple display options.
+Designed for the ESP32-S3 Super Mini (or Zero-style boards), GY-NEO6MV2 / NEO-7MV2 / NEO-8MV2 GPS, active buzzer, and multiple display options.
 
 ## Features
 
@@ -38,7 +38,7 @@ GPS accuracy depends on satellite visibility, antenna placement, and environment
 ## Hardware Requirements
 
 - ESP32-S3 Super Mini (or compatible Super Mini / Zero-style board)
-- GY-NEO6MV2 (u-blox NEO-6M) GPS module + antenna
+- GY-NEO6MV2, NEO-7MV2 or NEO-8MV2 (u-blox NEO-6M / NEO-7M / NEO-8M) GPS module + antenna
 - TMB12A03 active buzzer (3 V rated) or equivalent active buzzer
 - One of the supported displays (see below)
 - Two momentary push buttons
@@ -151,11 +151,12 @@ ESP32-S3 Super Mini
 │ (SPI pins for TFT)      │
 └─────────────────────────┘
 
-GPS GY-NEO6MV2
+GPS GY-NEO6MV2 / NEO-7MV2 / NEO-8MV2
 VCC → 3.3V or 5V (module has regulator)
 GND → GND
 TX  → ESP GPIO16
 RX  → ESP GPIO17
+(Default baud 9600 — change GPS_BAUD in the sketch if needed)
 
 Buzzer TMB12A03 (active)
 + → GPIO4
