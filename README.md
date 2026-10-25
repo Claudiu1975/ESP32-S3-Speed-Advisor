@@ -86,24 +86,51 @@ Typical Li-ion range used: 3.0 V (0 %) – 4.2 V (100 %).
 
 ## Software Setup
 
-1. Install the **ESP32** board package in the Arduino IDE (Espressif Systems).
-2. Select board: **ESP32S3 Dev Module** (or the closest Super Mini option if available).  
-   Enable USB CDC On Boot if you want Serial over USB.
-3. Install libraries via Library Manager:
+### Arduino IDE Board Settings
+
+1. Install the **ESP32** board package:
+   - Tools → Board → Boards Manager
+   - Search for **esp32**
+   - Install **esp32 by Espressif Systems** (2.0.14 or newer, preferably latest 3.x)
+
+2. Select the board:
+   - **Tools → Board → esp32 → ESP32S3 Dev Module**
+   - (There is no dedicated Super Mini entry — ESP32S3 Dev Module is correct)
+
+3. Recommended Tools settings:
+
+| Setting | Value | Notes |
+|---------|-------|-------|
+| USB CDC On Boot | Enabled | Serial works over USB-C |
+| USB Mode | Hardware CDC and JTAG | Default is fine |
+| CPU Frequency | 240 MHz | Default |
+| Flash Size | 4MB (32Mb) | Most Super Minis |
+| Partition Scheme | Default 4MB with spiffs | Or any 4 MB scheme |
+| PSRAM | OPI PSRAM | Enable if your board has PSRAM |
+| Upload Speed | 921600 | Lower to 460800 if upload fails |
+| Core Debug Level | None | |
+
+4. Connect the board and select the correct port under **Tools → Port**.
+
+5. Install libraries via **Tools → Manage Libraries**:
    - TinyGPSPlus
    - Adafruit SSD1306
    - Adafruit GFX Library
-   - Adafruit ST7735 and ST7789 Library (or TFT_eSPI if preferred)
-4. Open `SpeedAdvisor.ino`.
-5. At the top of the sketch, set:
+   - Adafruit ST7735 and ST7789 Library
+
+6. Open `SpeedAdvisor.ino` and set the display type at the top of the sketch:
    ```cpp
    #define DISPLAY_TYPE 0   // 0 = SSD1306 128x32
                             // 1 = SSD1306 128x64 (GM009605)
                             // 2 = ST7735S
                             // 3 = ST7789V
    ```
-6. Adjust pin numbers and battery divider ratio if needed.
+
 7. Upload.
+
+**Upload tip:** If the board does not enter download mode automatically, hold the **BOOT** button, press and release **RESET** (or unplug/replug), then release **BOOT** and click Upload.
+
+After upload, open the Serial Monitor at **115200 baud** (with USB CDC On Boot enabled) for any debug output.
 
 ## Wiring Diagram (Text)
 
