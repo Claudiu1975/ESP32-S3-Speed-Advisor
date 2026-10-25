@@ -1,6 +1,7 @@
 /*
   ESP32-S3 Super Mini Speed Advisor
   Supports SSD1306 (128x32 / 128x64), ST7735S, ST7789V
+  GPS: GY-NEO6MV2 / NEO-7MV2 / NEO-8MV2 (u-blox NEO-6M / NEO-7M / NEO-8M)
 
   Disclaimer: Hobby project only. Not a certified speedometer.
   Use at your own risk. See README.md for full disclaimer and credits.
@@ -28,7 +29,10 @@
   #include <Adafruit_ST7789.h>
 #endif
 
-// ========== PIN DEFINITIONS (adjust for your Super Mini) ==========
+// ========== GPS CONFIG ==========
+// Compatible modules: GY-NEO6MV2, NEO-7MV2, NEO-8MV2 (and similar u-blox UART GPS)
+// Default baud is 9600 for most breakout boards. Change if your module was reconfigured.
+#define GPS_BAUD        9600
 #define GPS_RX_PIN      16
 #define GPS_TX_PIN      17
 #define BUZZER_PIN      4
@@ -96,7 +100,7 @@ void setup() {
   analogReadResolution(12);
   analogSetAttenuation(ADC_11db);  // ~0-3.3 V range
 
-  GPSSerial.begin(9600, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
+  GPSSerial.begin(GPS_BAUD, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
 
 #if DISPLAY_TYPE == 0 || DISPLAY_TYPE == 1
   Wire.begin(I2C_SDA, I2C_SCL);
