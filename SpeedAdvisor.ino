@@ -222,19 +222,21 @@ float readBatteryPercent() {
 
 void showSetScreen() {
 #if DISPLAY_TYPE == 0
-  // Compact 128x32
+  // Compact but cleaner 128x32
   display.clearDisplay();
   display.setTextSize(1);
-  display.setCursor(0, 0);
-  display.print(F("SET "));
-  display.print(thresholdKmh, 1);
-  display.println(F(" km/h"));
-  display.print(F("Bat "));
-  display.print(readBatteryPercent(), 0);
-  display.println(F("%"));
+  display.setCursor(20, 0);
+  display.print(F("LIMIT"));
+  display.setTextSize(2);
+  char buf[8];
+  snprintf(buf, sizeof(buf), "%.1f", thresholdKmh);
+  int16_t x1, y1; uint16_t w, h;
+  display.getTextBounds(buf, 0, 0, &x1, &y1, &w, &h);
+  display.setCursor((128 - w) / 2, 12);
+  display.print(buf);
   display.display();
 #elif DISPLAY_TYPE == 1
-  // Fancier 128x64 (GM009605)
+  // Fancy 128x64 (GM009605)
   display.clearDisplay();
   display.setTextSize(1);
   display.setCursor(28, 4);
@@ -244,8 +246,7 @@ void showSetScreen() {
   display.setTextSize(3);
   char buf[8];
   snprintf(buf, sizeof(buf), "%.1f", thresholdKmh);
-  int16_t x1, y1;
-  uint16_t w, h;
+  int16_t x1, y1; uint16_t w, h;
   display.getTextBounds(buf, 0, 0, &x1, &y1, &w, &h);
   display.setCursor((128 - w) / 2, 22);
   display.print(buf);
@@ -259,15 +260,25 @@ void showSetScreen() {
   display.print(F("%"));
   display.display();
 #else
+  // TFT (ST7735S / ST7789V) – larger centered value
   display.fillScreen(ST77XX_BLACK);
-  display.setCursor(0, 10);
-  display.print(F("SET: "));
-  display.print(thresholdKmh, 1);
-  display.println(F(" km/h"));
-  display.setCursor(0, 30);
-  display.print(F("Bat: "));
+  display.setTextSize(2);
+  display.setCursor(30, 10);
+  display.print(F("LIMIT"));
+  display.setTextSize(4);
+  char buf[8];
+  snprintf(buf, sizeof(buf), "%.1f", thresholdKmh);
+  int16_t x1, y1; uint16_t w, h;
+  display.getTextBounds(buf, 0, 0, &x1, &y1, &w, &h);
+  display.setCursor((display.width() - w) / 2, 50);
+  display.print(buf);
+  display.setTextSize(2);
+  display.setCursor(70, 100);
+  display.print(F("km/h"));
+  display.setCursor(10, display.height() - 20);
+  display.print(F("Bat "));
   display.print(readBatteryPercent(), 0);
-  display.println(F("%"));
+  display.print(F("%"));
 #endif
 }
 
@@ -279,24 +290,30 @@ void updateDisplay() {
   float bat = readBatteryPercent();
 
 #if DISPLAY_TYPE == 0
+  // 128x32 – larger speed
   display.clearDisplay();
   if (!alertActive || displayOn) {
+    display.setTextSize(2);
+    char spdBuf[8];
+    snprintf(spdBuf, sizeof(spdBuf), "%.0f", speed);
+    int16_t x1, y1; uint16_t w, h;
+    display.getTextBounds(spdBuf, 0, 0, &x1, &y1, &w, &h);
+    display.setCursor((128 - w) / 2, 4);
+    display.print(spdBuf);
     display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.print(speed, 1);
-    display.println(F(" km/h"));
-    display.print(F("Sats "));
-    display.println(sats);
-    display.print(F("Bat "));
-    display.print(bat, 0);
-    display.println(F("%"));
+    display.setCursor(0, 24);
+    display.print(F("S"));
+    display.print(sats);
+    display.print(F(" L"));
+    display.print(thresholdKmh, 0);
+    display.print(F(" B"));
+    display.print((int)bat);
   }
   display.display();
 #elif DISPLAY_TYPE == 1
   // Large centered speed on 128x64
   display.clearDisplay();
   if (!alertActive || displayOn) {
-    // Top bar: sats + battery
     display.setTextSize(1);
     display.setCursor(0, 0);
     display.print(F("SAT "));
@@ -307,42 +324,51 @@ void updateDisplay() {
     display.print(batBuf);
     display.drawLine(0, 10, 127, 10, SSD1306_WHITE);
 
-    // Big speed in center
     display.setTextSize(3);
     char spdBuf[8];
-    snprintf(spdBuf, sizeof(spdBuf), "%.0f", speed);  // integer for maximum size
-    int16_t x1, y1;
-    uint16_t w, h;
+    snprintf(spdBuf, sizeof(spdBuf), "%.0f", speed);
+    int16_t x1, y1; uint16_t w, h;
     display.getTextBounds(spdBuf, 0, 0, &x1, &y1, &w, &h);
     display.setCursor((128 - w) / 2, 18);
     display.print(spdBuf);
 
-    // Unit + threshold hint
     display.setTextSize(1);
     display.setCursor(50, 46);
     display.print(F("km/h"));
     display.setCursor(0, 56);
     display.print(F("Limit "));
     display.print(thresholdKmh, 1);
-    // Simple battery bar
     int barW = map((int)bat, 0, 100, 0, 40);
     display.drawRect(86, 55, 42, 8, SSD1306_WHITE);
     display.fillRect(87, 56, barW, 6, SSD1306_WHITE);
   }
   display.display();
 #else
+  // TFT – large centered speed
   if (!alertActive || displayOn) {
     display.fillScreen(ST77XX_BLACK);
-    display.setCursor(0, 10);
-    display.print(speed, 1);
-    display.println(F(" km/h"));
-    display.setCursor(0, 30);
-    display.print(F("Sats: "));
-    display.println(sats);
-    display.setCursor(0, 50);
-    display.print(F("Bat: "));
-    display.print(bat, 0);
-    display.println(F("%"));
+    display.setTextSize(1);
+    display.setCursor(5, 5);
+    display.print(F("SAT "));
+    display.print(sats);
+    display.setCursor(display.width() - 50, 5);
+    display.print((int)bat);
+    display.print(F("%"));
+
+    display.setTextSize(6);
+    char spdBuf[8];
+    snprintf(spdBuf, sizeof(spdBuf), "%.0f", speed);
+    int16_t x1, y1; uint16_t w, h;
+    display.getTextBounds(spdBuf, 0, 0, &x1, &y1, &w, &h);
+    display.setCursor((display.width() - w) / 2, 40);
+    display.print(spdBuf);
+
+    display.setTextSize(2);
+    display.setCursor((display.width() - 60) / 2, 100);
+    display.print(F("km/h"));
+    display.setCursor(10, display.height() - 30);
+    display.print(F("Limit "));
+    display.print(thresholdKmh, 1);
   } else {
     display.fillScreen(ST77XX_BLACK);
   }
