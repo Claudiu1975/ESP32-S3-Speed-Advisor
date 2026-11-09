@@ -62,6 +62,7 @@ GPS accuracy depends on satellite visibility, antenna placement, and environment
 | TFT CS         | 10   | SPI                                        |
 | TFT DC         | 7    | SPI                                        |
 | TFT RST        | 15   | SPI                                        |
+| TFT BL         | 13   | Optional: backlight dimming (PWM). Leave BL on 3V3 and set `TFT_BL_PIN` to -1 to disable |
 
 **Always verify the silkscreen on your specific Super Mini board** — pin labels and available GPIOs can vary slightly between sellers.
 
@@ -82,7 +83,7 @@ Typical Li-ion range used: 3.0 V (0 %) – 4.2 V (100 %).
 ### Display Wiring Summary
 
 - **SSD1306 I2C (128×32 or 128×64 / GM009605)**: VCC→3.3 V, GND→GND, SDA→GPIO8, SCL→GPIO9
-- **ST7735S / ST7789V SPI**: VCC→3.3 V, GND→GND, MOSI→11, SCK→12, CS→10, DC→7, RST→15 (and BL if present to 3.3 V or a GPIO)
+- **ST7735S / ST7789V SPI**: VCC→3.3 V, GND→GND, MOSI→11, SCK→12, CS→10, DC→7, RST→15 (and BL to GPIO13 for backlight dimming, or to 3.3 V for a fixed backlight)
 
 ## Software Setup
 
@@ -180,9 +181,21 @@ Adjust pins in the sketch if your Super Mini silkscreen differs.
 1. Power on. The display shows the threshold speed (starts at 90.0 km/h).
 2. Use the two buttons to increase/decrease the threshold in 0.5 km/h steps.
 3. After a short idle period (or button confirmation), the device switches to normal mode.
+   A short press changes the limit by one step. **Hold a button for about 0.8 s to change the display brightness**: hold Up for brighter, hold Down for dimmer (3 levels). On the TFT versions this needs the BL pin wired to GPIO13.
 4. Normal mode shows current GPS speed and satellite count (plus battery percentage).
 5. When speed exceeds the threshold, the buzzer and display flash according to the timing rules above.
 6. Speed must drop below the threshold to reset the alert timer.
+
+## Power saving
+
+The sketch is tuned to save battery:
+
+- The CPU runs at 80 MHz (`CPU_FREQ_MHZ`) instead of the default 240 MHz.
+- The display is redrawn only when something visible changes, not on every loop.
+- The battery voltage is sampled once per second.
+- The display brightness can be lowered with a long press (see Usage). On the TFT, the backlight is the biggest display load, so dimming it helps the most.
+
+The GPS module is still the largest consumer and always runs at full power.
 
 ## License
 

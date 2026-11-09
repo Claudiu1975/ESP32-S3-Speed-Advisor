@@ -53,6 +53,19 @@
   #define TFT_RST       15
 #endif
 
+// ========== POWER SAVING / BRIGHTNESS ==========
+#define CPU_FREQ_MHZ       80     // 80 MHz is plenty for this sketch (default would be 240)
+#define LONG_PRESS_MS      800    // hold a button this long to change the brightness
+#define BATTERY_READ_MS    1000   // battery voltage is sampled once per second
+
+// TFT backlight control. Wire the module's BL pin to this GPIO to enable dimming.
+// Set to -1 if BL is tied to 3V3 (the backlight then stays at full brightness).
+#if DISPLAY_TYPE == 2 || DISPLAY_TYPE == 3
+  #define TFT_BL_PIN           13
+  #define TFT_BL_ACTIVE_HIGH   1   // 0 if your module's backlight is active-low
+  #define TFT_BL_PWM_HZ        5000
+#endif
+
 // ========== BATTERY CONFIG ==========
 // Voltage divider ratio (R1+R2)/R2. Example: two equal 100k resistors → 2.0
 #define BATTERY_DIVIDER_RATIO  2.0f
@@ -90,7 +103,14 @@ bool displayOn = true;
 unsigned long lastBeepToggle = 0;
 bool buzzerState = false;
 
+// Brightness: 0 = low, 1 = medium, 2 = full (long press Up = brighter, long press Down = dimmer)
+int brightnessLevel = 2;
+int batteryPct = 0;
+unsigned long lastBatteryMs = 0;
+bool forceRedraw = true;
+
 void setup() {
+  setCpuFrequencyMhz(CPU_FREQ_MHZ);
   Serial.begin(115200);
   pinMode(BUZZER_PIN, OUTPUT);
   digitalWrite(BUZZER_PIN, LOW);
@@ -122,6 +142,10 @@ void setup() {
 #endif
 
   display.setTextSize(1);
+  initBacklight();
+  applyBrightness();
+  batteryPct = (int)(readBatteryPercent() + 0.5f);
+  lastBatteryMs = millis();
   lastButtonMs = millis();
   showSetScreen();
 }
@@ -137,7 +161,14 @@ void loop() {
   if (currentMode == MODE_SET) {
     if (millis() - lastButtonMs > 5000) {  // 5 s idle → switch to run mode
       currentMode = MODE_RUN;
+      forceRedraw = true;
     }
+  }
+
+  // Sample the battery once per second instead of on every redraw
+  if (millis() - lastBatteryMs >= BATTERY_READ_MS) {
+    lastBatteryMs = millis();
+    batteryPct = (int)(readBatteryPercent() + 0.5f);
   }
 
   updateAlert();
@@ -146,27 +177,98 @@ void loop() {
   delay(50);  // light loop
 }
 
+// Short press: change the limit by one step (acts on release).
+// Long press (hold >= LONG_PRESS_MS): Up = brighter, Down = dimmer.
 void handleButtons() {
   static bool upPrev = HIGH, downPrev = HIGH;
+  static unsigned long upDownMs = 0, downDownMs = 0;
+  static bool upLongDone = false, downLongDone = false;
   bool upNow = digitalRead(BTN_UP_PIN);
   bool downNow = digitalRead(BTN_DOWN_PIN);
+  unsigned long now = millis();
 
+  // --- Up button ---
   if (upNow == LOW && upPrev == HIGH) {
+    upDownMs = now;
+    upLongDone = false;
+  }
+  if (upNow == LOW && !upLongDone && now - upDownMs >= LONG_PRESS_MS) {
+    upLongDone = true;
+    changeBrightness(+1);
+  }
+  if (upNow == HIGH && upPrev == LOW && !upLongDone) {
     thresholdKmh += STEP;
     if (thresholdKmh > 200.0f) thresholdKmh = 200.0f;
-    lastButtonMs = millis();
+    lastButtonMs = now;
     currentMode = MODE_SET;
     showSetScreen();
   }
+
+  // --- Down button ---
   if (downNow == LOW && downPrev == HIGH) {
+    downDownMs = now;
+    downLongDone = false;
+  }
+  if (downNow == LOW && !downLongDone && now - downDownMs >= LONG_PRESS_MS) {
+    downLongDone = true;
+    changeBrightness(-1);
+  }
+  if (downNow == HIGH && downPrev == LOW && !downLongDone) {
     thresholdKmh -= STEP;
     if (thresholdKmh < 5.0f) thresholdKmh = 5.0f;
-    lastButtonMs = millis();
+    lastButtonMs = now;
     currentMode = MODE_SET;
     showSetScreen();
   }
+
   upPrev = upNow;
   downPrev = downNow;
+}
+
+void changeBrightness(int delta) {
+  int level = brightnessLevel + delta;
+  if (level < 0) level = 0;
+  if (level > 2) level = 2;
+  if (level == brightnessLevel) return;
+  brightnessLevel = level;
+  applyBrightness();
+  forceRedraw = true;
+  if (currentMode == MODE_SET) showSetScreen();
+}
+
+void initBacklight() {
+#if (DISPLAY_TYPE == 2 || DISPLAY_TYPE == 3) && TFT_BL_PIN >= 0
+  #if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+    ledcAttach(TFT_BL_PIN, TFT_BL_PWM_HZ, 8);
+  #else
+    ledcSetup(0, TFT_BL_PWM_HZ, 8);
+    ledcAttachPin(TFT_BL_PIN, 0);
+  #endif
+#endif
+}
+
+void applyBrightness() {
+#if DISPLAY_TYPE == 0 || DISPLAY_TYPE == 1
+  if (brightnessLevel == 2) {
+    display.dim(false);                       // default contrast
+  } else if (brightnessLevel == 1) {
+    display.ssd1306_command(SSD1306_SETCONTRAST);
+    display.ssd1306_command(0x40);
+  } else {
+    display.dim(true);                        // lowest contrast
+  }
+#elif TFT_BL_PIN >= 0
+  static const uint8_t duty[3] = {25, 100, 255};
+  uint8_t d = duty[brightnessLevel];
+  #if !TFT_BL_ACTIVE_HIGH
+    d = 255 - d;
+  #endif
+  #if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+    ledcWrite(TFT_BL_PIN, d);
+  #else
+    ledcWrite(0, d);
+  #endif
+#endif
 }
 
 void updateAlert() {
@@ -256,7 +358,7 @@ void showSetScreen() {
   display.print(F("km/h"));
   display.setCursor(4, 56);
   display.print(F("Bat "));
-  display.print(readBatteryPercent(), 0);
+  display.print(batteryPct);
   display.print(F("%"));
   display.display();
 #else
@@ -277,7 +379,7 @@ void showSetScreen() {
   display.print(F("km/h"));
   display.setCursor(10, display.height() - 20);
   display.print(F("Bat "));
-  display.print(readBatteryPercent(), 0);
+  display.print(batteryPct);
   display.print(F("%"));
 #endif
 }
@@ -287,7 +389,20 @@ void updateDisplay() {
 
   float speed = gps.speed.isValid() ? gps.speed.kmph() : 0.0f;
   int sats = gps.satellites.isValid() ? gps.satellites.value() : 0;
-  float bat = readBatteryPercent();
+  int bat = batteryPct;
+
+  // Redraw only when something visible changed (saves SPI/I2C traffic and CPU time)
+  int speedInt = (int)(speed + 0.5f);
+  bool show = !alertActive || displayOn;
+  static int lastSpeed = -1, lastSats = -1, lastBat = -1;
+  static float lastLimit = -1;
+  static bool lastShow = false;
+  if (!forceRedraw && speedInt == lastSpeed && sats == lastSats && bat == lastBat &&
+      thresholdKmh == lastLimit && show == lastShow) {
+    return;
+  }
+  forceRedraw = false;
+  lastSpeed = speedInt; lastSats = sats; lastBat = bat; lastLimit = thresholdKmh; lastShow = show;
 
 #if DISPLAY_TYPE == 0
   // 128x32 – larger speed
