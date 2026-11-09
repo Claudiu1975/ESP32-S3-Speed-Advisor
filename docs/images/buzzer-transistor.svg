@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 290" width="520" height="290" role="img">
+<title>Optional transistor driver for the active buzzer</title><rect width="520" height="290" fill="#FFFFFF"/>
+<text x="260" y="16" font-size="14" font-weight="500" text-anchor="middle" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">Optional buzzer driver (NPN transistor)</text>
+<g transform="translate(20,18)">
+<text x="20" y="140" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">GPIO4</text>
+<path d="M62 140 H85" fill="none" stroke="#D85A30" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="85" y="132" width="56" height="16" rx="2" fill="#FAEEDA" stroke="#854F0B" stroke-width="1"/>
+<text x="113" y="118" font-size="12" font-weight="400" text-anchor="middle" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">R1 1 kΩ</text>
+<path d="M141 140 H208" fill="none" stroke="#D85A30" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="240" cy="140" r="34" fill="none" stroke="#2C2C2A" stroke-width="1.5"/>
+<path d="M222 120 V160" stroke="#2C2C2A" stroke-width="3" fill="none"/>
+<path d="M222 130 L250 110 V92" fill="none" stroke="#2C2C2A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M222 150 L250 170 V196" fill="none" stroke="#2C2C2A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M240 166 L250 170 L244 160 Z" fill="#2C2C2A"/>
+<path d="M243 196 H257 M246 200 H254 M249 204 H251" stroke="#2C2C2A" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+<circle cx="250" cy="62" r="26" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="1"/>
+<text x="250" y="56" font-size="12" font-weight="400" text-anchor="middle" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">+</text>
+<text x="290" y="62" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">Active buzzer</text>
+<path d="M250 36 V30" fill="none" stroke="#E24B4A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="262" y="28" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">3V3 (or 5V for a 5 V buzzer)</text>
+<path d="M250 88 V92" fill="none" stroke="#2C2C2A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="292" y="140" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">NPN 2N2222 / BC547 / 2N3904</text>
+<text x="292" y="158" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">E to GND, C to buzzer −</text>
+<text x="240" y="238" font-size="12" font-weight="400" text-anchor="middle" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">GPIO4 HIGH = buzzer on, so no change to the sketch.</text>
+<text x="240" y="256" font-size="12" font-weight="400" text-anchor="middle" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">Use it if the buzzer draws more than about 20 mA.</text>
+</g></svg>
