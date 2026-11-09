@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 650" width="680" height="650" role="img">
+<title>ESP32-S3 Speed Advisor wiring: ST7735S / ST7789V SPI TFT</title>
+<rect width="680" height="650" fill="#FFFFFF"/>
+<text x="340" y="18" font-size="14" font-weight="500" text-anchor="middle" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">ESP32-S3 Speed Advisor wiring: ST7735S / ST7789V SPI TFT</text>
+<rect x="260" y="60" width="160" height="510" rx="10" fill="#E1F5EE" stroke="#0F6E56" stroke-width="1"/>
+<rect x="315" y="48" width="50" height="18" rx="3" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="1"/>
+<text x="340" y="57" font-size="11" font-weight="400" text-anchor="middle" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">USB-C</text>
+<rect x="295" y="262" width="90" height="56" rx="4" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="1"/>
+<text x="340" y="281" font-size="14" font-weight="500" text-anchor="middle" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">ESP32-S3</text>
+<text x="340" y="301" font-size="12" font-weight="400" text-anchor="middle" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">Super Mini</text>
+<text x="268" y="95" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">3V3</text>
+<rect x="252" y="91" width="8" height="8" fill="#5F5E5A"/>
+<text x="268" y="125" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">GPIO17</text>
+<rect x="252" y="121" width="8" height="8" fill="#5F5E5A"/>
+<text x="268" y="155" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">GPIO16</text>
+<rect x="252" y="151" width="8" height="8" fill="#5F5E5A"/>
+<text x="268" y="185" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">GND</text>
+<rect x="252" y="181" width="8" height="8" fill="#5F5E5A"/>
+<text x="268" y="335" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">GPIO1</text>
+<rect x="252" y="331" width="8" height="8" fill="#5F5E5A"/>
+<text x="412" y="125" font-size="12" font-weight="400" text-anchor="end" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">GPIO12</text>
+<rect x="420" y="121" width="8" height="8" fill="#5F5E5A"/>
+<text x="412" y="155" font-size="12" font-weight="400" text-anchor="end" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">GPIO11</text>
+<rect x="420" y="151" width="8" height="8" fill="#5F5E5A"/>
+<text x="412" y="185" font-size="12" font-weight="400" text-anchor="end" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">GPIO15</text>
+<rect x="420" y="181" width="8" height="8" fill="#5F5E5A"/>
+<text x="412" y="215" font-size="12" font-weight="400" text-anchor="end" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">GPIO7</text>
+<rect x="420" y="211" width="8" height="8" fill="#5F5E5A"/>
+<text x="412" y="245" font-size="12" font-weight="400" text-anchor="end" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">GPIO10</text>
+<rect x="420" y="241" width="8" height="8" fill="#5F5E5A"/>
+<text x="412" y="335" font-size="12" font-weight="400" text-anchor="end" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">GPIO4</text>
+<rect x="420" y="331" width="8" height="8" fill="#5F5E5A"/>
+<text x="412" y="440" font-size="12" font-weight="400" text-anchor="end" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">GPIO5</text>
+<rect x="420" y="436" width="8" height="8" fill="#5F5E5A"/>
+<text x="412" y="510" font-size="12" font-weight="400" text-anchor="end" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">GPIO6</text>
+<rect x="420" y="506" width="8" height="8" fill="#5F5E5A"/>
+<text x="300" y="550" font-size="12" font-weight="400" text-anchor="middle" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">BAT+</text>
+<text x="380" y="550" font-size="12" font-weight="400" text-anchor="middle" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">BAT−</text>
+<rect x="296" y="562" width="8" height="8" fill="#5F5E5A"/>
+<rect x="376" y="562" width="8" height="8" fill="#5F5E5A"/>
+<rect x="30" y="64" width="140" height="146" rx="6" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="1"/>
+<text x="42" y="120" font-size="14" font-weight="500" text-anchor="start" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">GPS module</text>
+<text x="42" y="140" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">NEO-6M/7M/8M</text>
+<rect x="42" y="164" width="44" height="36" rx="3" fill="#FAEEDA" stroke="#854F0B" stroke-width="1"/>
+<text x="162" y="95" font-size="12" font-weight="400" text-anchor="end" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">VCC</text>
+<text x="162" y="125" font-size="12" font-weight="400" text-anchor="end" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">RX</text>
+<text x="162" y="155" font-size="12" font-weight="400" text-anchor="end" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">TX</text>
+<text x="162" y="185" font-size="12" font-weight="400" text-anchor="end" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">GND</text>
+<path d="M170 95 H252" fill="none" stroke="#E24B4A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M170 125 H252" fill="none" stroke="#7F77DD" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M170 155 H252" fill="none" stroke="#639922" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M170 185 H252" fill="none" stroke="#2C2C2A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="30" y="500" width="90" height="62" rx="6" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="1"/>
+<text x="62" y="522" font-size="14" font-weight="500" text-anchor="middle" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">Li-ion</text>
+<text x="62" y="544" font-size="12" font-weight="400" text-anchor="middle" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">with PCM</text>
+<text x="106" y="512" font-size="12" font-weight="400" text-anchor="end" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">+</text>
+<text x="106" y="548" font-size="12" font-weight="400" text-anchor="end" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">−</text>
+<path d="M120 515 H145" fill="none" stroke="#E24B4A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M145 515 L183 500" fill="none" stroke="#5F5E5A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M189 515 H230 V495" fill="none" stroke="#E24B4A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M230 515 V610 H300 V574" fill="none" stroke="#E24B4A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M120 545 V645 H380 V574" fill="none" stroke="#2C2C2A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="145" cy="515" r="3" fill="#2C2C2A"/>
+<circle cx="189" cy="515" r="3" fill="#2C2C2A"/>
+<circle cx="230" cy="515" r="3.5" fill="#2C2C2A"/>
+<text x="167" y="538" font-size="12" font-weight="400" text-anchor="middle" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">Switch</text>
+<rect x="224" y="355" width="12" height="140" rx="2" fill="#FAEEDA" stroke="#854F0B" stroke-width="1"/>
+<rect x="224" y="275" width="12" height="40" rx="2" fill="#FAEEDA" stroke="#854F0B" stroke-width="1"/>
+<text x="214" y="375" font-size="12" font-weight="400" text-anchor="end" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">R1 100k</text>
+<text x="214" y="295" font-size="12" font-weight="400" text-anchor="end" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">R2 100k</text>
+<path d="M230 355 V335 H252" fill="none" stroke="#888780" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M230 335 V315" fill="none" stroke="#888780" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="230" cy="335" r="3.5" fill="#2C2C2A"/>
+<path d="M230 275 V262" fill="none" stroke="#2C2C2A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M223 262 H237 M226 258 H234 M229 254 H231" stroke="#2C2C2A" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+<rect x="520" y="50" width="130" height="240" rx="6" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="1"/>
+<text x="598" y="150" font-size="14" font-weight="500" text-anchor="middle" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">TFT</text>
+<text x="598" y="170" font-size="11" font-weight="400" text-anchor="middle" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">ST7735S / ST7789V</text>
+<text x="598" y="188" font-size="12" font-weight="400" text-anchor="middle" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">SPI</text>
+<text x="528" y="65" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">GND</text>
+<text x="528" y="95" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">VCC</text>
+<text x="528" y="125" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">SCL</text>
+<text x="528" y="155" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">SDA</text>
+<text x="528" y="185" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">RES</text>
+<text x="528" y="215" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">DC</text>
+<text x="528" y="245" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">CS</text>
+<text x="528" y="275" font-size="12" font-weight="400" text-anchor="start" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">BL</text>
+<path d="M428 125 H520" fill="none" stroke="#EF9F27" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M428 155 H520" fill="none" stroke="#378ADD" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M428 185 H520" fill="none" stroke="#D4537E" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M428 215 H520" fill="none" stroke="#7F77DD" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M428 245 H520" fill="none" stroke="#639922" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M520 95 H490" fill="none" stroke="#E24B4A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="486" y="95" font-size="12" font-weight="400" text-anchor="end" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">3V3</text>
+<path d="M520 275 H490" fill="none" stroke="#E24B4A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="486" y="275" font-size="12" font-weight="400" text-anchor="end" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">3V3</text>
+<path d="M520 65 H495 V75" fill="none" stroke="#2C2C2A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M488 75 H502 M491 79 H499 M494 83 H496" stroke="#2C2C2A" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+<circle cx="568" cy="350" r="30" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="1"/>
+<text x="568" y="344" font-size="12" font-weight="400" text-anchor="middle" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">+</text>
+<text x="568" y="392" font-size="12" font-weight="400" text-anchor="middle" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">Active buzzer</text>
+<path d="M428 335 H520" fill="none" stroke="#D85A30" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M520 365 H495 V375" fill="none" stroke="#2C2C2A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M488 375 H502 M491 379 H499 M494 383 H496" stroke="#2C2C2A" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+<path d="M520 335 H540" fill="none" stroke="#D85A30" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M520 365 H540" fill="none" stroke="#2C2C2A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="530" y="422" width="60" height="36" rx="4" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="1"/>
+<circle cx="560" cy="440" r="10" fill="#9FE1CB" stroke="#0F6E56" stroke-width="1"/>
+<path d="M428 440 H530" fill="none" stroke="#1D9E75" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M590 440 H625 V450" fill="none" stroke="#2C2C2A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M618 450 H632 M621 454 H629 M624 458 H626" stroke="#2C2C2A" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+<circle cx="530" cy="440" r="3" fill="#2C2C2A"/>
+<circle cx="590" cy="440" r="3" fill="#2C2C2A"/>
+<text x="560" y="474" font-size="12" font-weight="400" text-anchor="middle" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">Button up</text>
+<rect x="530" y="492" width="60" height="36" rx="4" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="1"/>
+<circle cx="560" cy="510" r="10" fill="#9FE1CB" stroke="#0F6E56" stroke-width="1"/>
+<path d="M428 510 H530" fill="none" stroke="#D4537E" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M590 510 H625 V520" fill="none" stroke="#2C2C2A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M618 520 H632 M621 524 H629 M624 528 H626" stroke="#2C2C2A" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+<circle cx="530" cy="510" r="3" fill="#2C2C2A"/>
+<circle cx="590" cy="510" r="3" fill="#2C2C2A"/>
+<text x="560" y="544" font-size="12" font-weight="400" text-anchor="middle" dominant-baseline="central" fill="#2C2C2A" font-family="Helvetica, Arial, sans-serif">Button down</text>
+</svg>

@@ -12,7 +12,7 @@ Designed for the ESP32-S3 Super Mini (or Zero-style boards), GY-NEO6MV2 / NEO-7M
   - At 55 s: continuous tone
   - Display flashes in sync with the buzzer
 - Live speed + number of GPS satellites on the display
-- Battery level indication (requires external voltage divider on an ADC pin)
+- Battery level indication (requires external voltage divider on an ADC pin; the board's own charger handles charging)
 - Support for multiple displays:
   - SSD1306 128×32 I2C
   - SSD1306 128×64 I2C (including GM009605-style modules)
@@ -64,6 +64,28 @@ GPS accuracy depends on satellite visibility, antenna placement, and environment
 | TFT RST        | 15   | SPI                                        |
 
 **Always verify the silkscreen on your specific Super Mini board** — pin labels and available GPIOs can vary slightly between sellers.
+
+### Wiring Diagrams
+
+SSD1306 OLED (I2C):
+
+![Wiring with SSD1306 OLED](docs/images/wiring-oled.svg)
+
+ST7735S / ST7789V TFT (SPI):
+
+![Wiring with ST7735S / ST7789V TFT](docs/images/wiring-tft.svg)
+
+Pin positions on the board are drawn to keep the wires straight and do not match the physical header order. Wire by GPIO number and check the silkscreen on your board. All ground symbols connect to the board GND.
+
+### Buzzer Current Warning
+
+> **Warning:** The buzzer is driven directly from GPIO4. A GPIO pin of the ESP32-S3 can only supply a limited current (about 40 mA absolute maximum, so keep the load well below 20 mA). Most small active buzzers such as the TMB12A03 are fine, but a larger or louder one can overload the pin and damage the board. Check the current rating in the datasheet. If it draws more than about 20 mA, drive it through an NPN transistor as shown below. No code change is needed, because GPIO4 HIGH still turns the buzzer on.
+
+![Optional NPN transistor buzzer driver](docs/images/buzzer-transistor.svg)
+
+### Battery Charging
+
+The ESP32-S3 Super Mini has a TP4054 Li-ion/LiPo charger on the board (about 100 mA charge current, 4.2 V). Solder the battery to the BAT+ and BAT− pads, not to the 5V pin. The board has no battery protection, so use a cell with a built-in protection circuit (PCM). Some clones differ, so check the underside of your board.
 
 ### Battery Voltage Monitoring
 
