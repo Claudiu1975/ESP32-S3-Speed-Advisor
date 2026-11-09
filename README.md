@@ -29,6 +29,8 @@ GPS accuracy depends on satellite visibility, antenna placement, and environment
 
 ## Credits
 
+A human-and-AI project: Claudiu brought the idea and the hardware, Claude helped with the wiring diagrams and documentation.
+
 - GPS parsing: [TinyGPSPlus](https://github.com/mikalhart/TinyGPSPlus) by Mikal Hart
 - OLED graphics: Adafruit SSD1306 & Adafruit GFX libraries
 - TFT graphics: Adafruit ST7735 / ST7789 or TFT_eSPI (depending on configuration)
