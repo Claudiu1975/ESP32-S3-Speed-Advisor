@@ -10,6 +10,7 @@
 #include <TinyGPSPlus.h>
 #include <HardwareSerial.h>
 #include <stdio.h>
+#include <Preferences.h>
 
 // ========== DISPLAY SELECTION ==========
 // 0 = SSD1306 128x32 I2C
@@ -58,6 +59,13 @@
 #define LONG_PRESS_MS      800    // hold a button this long to change the brightness
 #define BATTERY_READ_MS    1000   // battery voltage is sampled once per second
 
+// ========== GPS POWER SAVE ==========
+// Triple click of the Down button switches the GPS module between full performance and
+// power save. Uses the u-blox UBX-CFG-RXM command (lpMode). The setting is remembered.
+#define GPS_PS_LPMODE        1      // lpMode when power save is ON: 1 = Power Save Mode, 4 = Eco mode
+#define TRIPLE_CLICK_GAP_MS  500    // max time between two clicks of a triple click
+#define UBX_ACK_TIMEOUT_MS   1000
+
 // TFT backlight control. Wire the module's BL pin to this GPIO to enable dimming.
 // Set to -1 if BL is tied to 3V3 (the backlight then stays at full brightness).
 #if DISPLAY_TYPE == 2 || DISPLAY_TYPE == 3
@@ -80,6 +88,7 @@ const uint32_t ALERT_PHASE1_MS = 45000;   // 45 s → start increasing frequency
 const uint32_t ALERT_PHASE2_MS = 55000;   // 55 s → continuous
 
 // ========== OBJECTS ==========
+Preferences prefs;
 TinyGPSPlus gps;
 HardwareSerial GPSSerial(2);
 
@@ -109,9 +118,18 @@ int batteryPct = 0;
 unsigned long lastBatteryMs = 0;
 bool forceRedraw = true;
 
+bool gpsPowerSave = false;
+bool gpsApplyPending = false;
+unsigned long toastUntilMs = 0;
+char toastLine1[24] = "";
+char toastLine2[24] = "";
+
 void setup() {
   setCpuFrequencyMhz(CPU_FREQ_MHZ);
   Serial.begin(115200);
+  prefs.begin("speedadv", false);
+  gpsPowerSave = prefs.getBool("gpsps", false);
+  gpsApplyPending = gpsPowerSave;   // re-apply the saved setting once the GPS has booted
   pinMode(BUZZER_PIN, OUTPUT);
   digitalWrite(BUZZER_PIN, LOW);
 
@@ -165,6 +183,23 @@ void loop() {
     }
   }
 
+  // Re-apply a saved GPS power-save setting a few seconds after boot
+  if (gpsApplyPending && millis() > 3000) {
+    gpsApplyPending = false;
+    if (!applyGpsPowerMode(true)) {
+      gpsPowerSave = false;
+      prefs.putBool("gpsps", false);
+      showToast("GPS power save", "FAILED");
+    }
+  }
+
+  // End of an on-screen message
+  if (toastUntilMs != 0 && millis() > toastUntilMs) {
+    toastUntilMs = 0;
+    forceRedraw = true;
+    if (currentMode == MODE_SET) showSetScreen();
+  }
+
   // Sample the battery once per second instead of on every redraw
   if (millis() - lastBatteryMs >= BATTERY_READ_MS) {
     lastBatteryMs = millis();
@@ -183,6 +218,9 @@ void handleButtons() {
   static bool upPrev = HIGH, downPrev = HIGH;
   static unsigned long upDownMs = 0, downDownMs = 0;
   static bool upLongDone = false, downLongDone = false;
+  static uint8_t downClicks = 0;
+  static unsigned long lastDownClickMs = 0;
+  static float limitBeforeClicks = 0;
   bool upNow = digitalRead(BTN_UP_PIN);
   bool downNow = digitalRead(BTN_DOWN_PIN);
   unsigned long now = millis();
@@ -194,9 +232,11 @@ void handleButtons() {
   }
   if (upNow == LOW && !upLongDone && now - upDownMs >= LONG_PRESS_MS) {
     upLongDone = true;
+    downClicks = 0;
     changeBrightness(+1);
   }
   if (upNow == HIGH && upPrev == LOW && !upLongDone) {
+    downClicks = 0;
     thresholdKmh += STEP;
     if (thresholdKmh > 200.0f) thresholdKmh = 200.0f;
     lastButtonMs = now;
@@ -211,18 +251,136 @@ void handleButtons() {
   }
   if (downNow == LOW && !downLongDone && now - downDownMs >= LONG_PRESS_MS) {
     downLongDone = true;
+    downClicks = 0;
     changeBrightness(-1);
   }
   if (downNow == HIGH && downPrev == LOW && !downLongDone) {
-    thresholdKmh -= STEP;
-    if (thresholdKmh < 5.0f) thresholdKmh = 5.0f;
+    // Count clicks; three quick clicks toggle the GPS power save instead of changing the limit
+    if (downClicks == 0 || now - lastDownClickMs > TRIPLE_CLICK_GAP_MS) {
+      downClicks = 0;
+      limitBeforeClicks = thresholdKmh;
+    }
+    downClicks++;
+    lastDownClickMs = now;
     lastButtonMs = now;
-    currentMode = MODE_SET;
-    showSetScreen();
+    if (downClicks >= 3) {
+      downClicks = 0;
+      thresholdKmh = limitBeforeClicks;   // undo the two limit steps made by this triple click
+      toggleGpsPowerSave();
+    } else {
+      thresholdKmh -= STEP;
+      if (thresholdKmh < 5.0f) thresholdKmh = 5.0f;
+      currentMode = MODE_SET;
+      showSetScreen();
+    }
   }
 
   upPrev = upNow;
   downPrev = downNow;
+}
+
+// ---------------------------------------------------------------------------
+// GPS power save (u-blox UBX-CFG-RXM)
+// ---------------------------------------------------------------------------
+enum UbxResult { UBX_ACK, UBX_NAK, UBX_TIMEOUT };
+
+void ubxSend(uint8_t cls, uint8_t id, const uint8_t *payload, uint8_t len) {
+  uint8_t frame[16];
+  uint8_t n = 0;
+  frame[n++] = 0xB5;
+  frame[n++] = 0x62;
+  frame[n++] = cls;
+  frame[n++] = id;
+  frame[n++] = len;
+  frame[n++] = 0;
+  for (uint8_t i = 0; i < len; i++) frame[n++] = payload[i];
+  uint8_t a = 0, b = 0;
+  for (uint8_t i = 2; i < n; i++) { a += frame[i]; b += a; }   // UBX checksum
+  frame[n++] = a;
+  frame[n++] = b;
+  GPSSerial.write(frame, n);
+  GPSSerial.flush();
+}
+
+// Waits for UBX-ACK-ACK / UBX-ACK-NAK for the given message. NMEA bytes keep feeding the parser.
+UbxResult ubxWaitAck(uint8_t cls, uint8_t id, uint32_t timeoutMs) {
+  uint8_t win[10] = {0};
+  uint32_t start = millis();
+  while (millis() - start < timeoutMs) {
+    while (GPSSerial.available()) {
+      uint8_t c = GPSSerial.read();
+      gps.encode(c);
+      memmove(win, win + 1, 9);
+      win[9] = c;
+      if (win[0] == 0xB5 && win[1] == 0x62 && win[2] == 0x05 && (win[3] == 0x01 || win[3] == 0x00) &&
+          win[4] == 0x02 && win[5] == 0x00 && win[6] == cls && win[7] == id) {
+        uint8_t a = 0, b = 0;
+        for (uint8_t i = 2; i < 8; i++) { a += win[i]; b += a; }
+        if (a == win[8] && b == win[9]) return win[3] == 0x01 ? UBX_ACK : UBX_NAK;
+      }
+    }
+    delay(2);
+  }
+  return UBX_TIMEOUT;
+}
+
+// Returns true if the module acknowledged the new power mode.
+bool applyGpsPowerMode(bool saveOn) {
+  while (GPSSerial.available()) gps.encode(GPSSerial.read());   // drain old data
+  uint8_t payload[2] = {0x08, (uint8_t)(saveOn ? GPS_PS_LPMODE : 0)};   // UBX-CFG-RXM: reserved1 = 8, lpMode
+  ubxSend(0x06, 0x11, payload, 2);
+  UbxResult r = ubxWaitAck(0x06, 0x11, UBX_ACK_TIMEOUT_MS);
+  Serial.printf("GPS power save %s: %s\n", saveOn ? "ON" : "OFF",
+                r == UBX_ACK ? "acknowledged" : (r == UBX_NAK ? "rejected (NAK)" : "no answer"));
+  return r == UBX_ACK;
+}
+
+void toggleGpsPowerSave() {
+  bool target = !gpsPowerSave;
+  if (applyGpsPowerMode(target)) {
+    gpsPowerSave = target;
+    prefs.putBool("gpsps", gpsPowerSave);
+    showToast("GPS power save", gpsPowerSave ? "ON" : "OFF");
+  } else {
+    showToast("GPS power save", "FAILED");
+  }
+}
+
+void showToast(const char *l1, const char *l2) {
+  strncpy(toastLine1, l1, sizeof(toastLine1) - 1);
+  strncpy(toastLine2, l2, sizeof(toastLine2) - 1);
+  toastUntilMs = millis() + 1500;
+  drawToast();
+}
+
+void drawToast() {
+#if DISPLAY_TYPE == 0
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setCursor(0, 2);
+  display.print(toastLine1);
+  display.setTextSize(2);
+  display.setCursor(0, 14);
+  display.print(toastLine2);
+  display.display();
+#elif DISPLAY_TYPE == 1
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setCursor(0, 12);
+  display.print(toastLine1);
+  display.setTextSize(3);
+  display.setCursor(0, 30);
+  display.print(toastLine2);
+  display.display();
+#else
+  display.fillScreen(ST77XX_BLACK);
+  display.setTextSize(2);
+  display.setCursor(10, 30);
+  display.print(toastLine1);
+  display.setTextSize(4);
+  display.setCursor(10, 70);
+  display.print(toastLine2);
+#endif
 }
 
 void changeBrightness(int delta) {
@@ -385,7 +543,7 @@ void showSetScreen() {
 }
 
 void updateDisplay() {
-  if (currentMode == MODE_SET) return;
+  if (currentMode == MODE_SET || toastUntilMs != 0) return;
 
   float speed = gps.speed.isValid() ? gps.speed.kmph() : 0.0f;
   int sats = gps.satellites.isValid() ? gps.satellites.value() : 0;
@@ -396,13 +554,13 @@ void updateDisplay() {
   bool show = !alertActive || displayOn;
   static int lastSpeed = -1, lastSats = -1, lastBat = -1;
   static float lastLimit = -1;
-  static bool lastShow = false;
+  static bool lastShow = false, lastPs = false;
   if (!forceRedraw && speedInt == lastSpeed && sats == lastSats && bat == lastBat &&
-      thresholdKmh == lastLimit && show == lastShow) {
+      thresholdKmh == lastLimit && show == lastShow && gpsPowerSave == lastPs) {
     return;
   }
   forceRedraw = false;
-  lastSpeed = speedInt; lastSats = sats; lastBat = bat; lastLimit = thresholdKmh; lastShow = show;
+  lastSpeed = speedInt; lastSats = sats; lastBat = bat; lastLimit = thresholdKmh; lastShow = show; lastPs = gpsPowerSave;
 
 #if DISPLAY_TYPE == 0
   // 128x32 – larger speed
@@ -423,6 +581,7 @@ void updateDisplay() {
     display.print(thresholdKmh, 0);
     display.print(F(" B"));
     display.print((int)bat);
+    if (gpsPowerSave) display.print(F(" P"));
   }
   display.display();
 #elif DISPLAY_TYPE == 1
@@ -433,6 +592,7 @@ void updateDisplay() {
     display.setCursor(0, 0);
     display.print(F("SAT "));
     display.print(sats);
+    if (gpsPowerSave) display.print(F(" PS"));
     char batBuf[8];
     snprintf(batBuf, sizeof(batBuf), "%d%%", (int)bat);
     display.setCursor(128 - 6 * strlen(batBuf), 0);
@@ -466,6 +626,7 @@ void updateDisplay() {
     display.setCursor(5, 5);
     display.print(F("SAT "));
     display.print(sats);
+    if (gpsPowerSave) display.print(F(" PS"));
     display.setCursor(display.width() - 50, 5);
     display.print((int)bat);
     display.print(F("%"));
