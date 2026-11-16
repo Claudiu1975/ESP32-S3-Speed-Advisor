@@ -143,17 +143,43 @@ Typical Li-ion range used: 3.0 V (0 %) – 4.2 V (100 %).
 
 6. Open `SpeedAdvisor.ino` and set the display type at the top of the sketch:
    ```cpp
-   #define DISPLAY_TYPE 0   // 0 = SSD1306 128x32
+   #define DISPLAY_TYPE 3   // 0 = SSD1306 128x32
                             // 1 = SSD1306 128x64 (GM009605)
                             // 2 = ST7735S
                             // 3 = ST7789V
    ```
 
+   For the TFT displays, also check these settings near the top of the sketch:
+
+   | Setting | Display | Meaning |
+   |---------|---------|---------|
+   | `ST7789_WIDTH` / `ST7789_HEIGHT` | ST7789V | Panel size: 240×240 (1.3" / 1.54"), 240×320 (2.0" / 2.4"), 135×240 (1.14"), 170×320 (1.9") |
+   | `ST7789_SPI_MODE` | ST7789V | `SPI_MODE0` for most modules. For 240×240 modules without a CS pin, set `TFT_CS` to -1 and use `SPI_MODE3` |
+   | `ST7735_TAB` | ST7735S | Panel variant: `INITR_BLACKTAB` (default), `INITR_GREENTAB`, `INITR_REDTAB`, `INITR_MINI160x80`. Try another one if red and blue are swapped or there is a noisy stripe at one edge |
+   | `TFT_ROTATION` | both | 1 = landscape, 3 = landscape turned 180° |
+
+   The TFT layout scales to the panel resolution. Only the parts of the screen that change are redrawn, so the speed does not flicker. The speed turns red above the limit.
+
 7. Upload.
 
 **Upload tip:** If the board does not enter download mode automatically, hold the **BOOT** button, press and release **RESET** (or unplug/replug), then release **BOOT** and click Upload.
 
-After upload, open the Serial Monitor at **115200 baud** (with USB CDC On Boot enabled) for any debug output.
+After upload, open the Serial Monitor at **115200 baud** (with USB CDC On Boot enabled).
+
+### Serial Monitor output
+
+With `DEBUG_SERIAL` set to 1 (the default), the sketch prints one status line per second:
+
+```
+chars:15234  fix:yes  sats:8  speed:0.4 km/h  limit:90.0  bat:87%  alert:off
+```
+
+- `chars` stays at 0: no data from the GPS. Check that GPS TX goes to the board RX pin and that the baud rate is 9600.
+- `chars` increases but `fix:no`: the GPS works but has no fix yet. Move it near a window or outside; a cold start can take 1–5 minutes.
+- `fix:yes` with 4 or more satellites: working. A speed of 0–2 km/h while standing still is normal GPS noise.
+- `bat:0%`: the battery divider on GPIO1 is not connected (fine when powered from USB).
+
+You may also see `TFT 240x240 ready` at startup (easy to miss, because it is printed before the Serial Monitor reconnects) and `GPS power save ON: acknowledged` when power save is switched. Set `DEBUG_SERIAL` to 0 to turn the status line off.
 
 ## Wiring Diagram (Text)
 
