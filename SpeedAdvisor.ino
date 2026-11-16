@@ -18,16 +18,18 @@
 // 1 = SSD1306 128x64 I2C (GM009605 style)
 // 2 = ST7735S SPI
 // 3 = ST7789V SPI
-#define DISPLAY_TYPE 0
+#define DISPLAY_TYPE 3
 
 #if DISPLAY_TYPE == 0 || DISPLAY_TYPE == 1
   #include <Wire.h>
   #include <Adafruit_GFX.h>
   #include <Adafruit_SSD1306.h>
 #elif DISPLAY_TYPE == 2
+  #include <SPI.h>
   #include <Adafruit_GFX.h>
   #include <Adafruit_ST7735.h>
 #elif DISPLAY_TYPE == 3
+  #include <SPI.h>
   #include <Adafruit_GFX.h>
   #include <Adafruit_ST7789.h>
 #endif
@@ -48,9 +50,36 @@
 #else
   #define TFT_MOSI      11
   #define TFT_SCK       12
-  #define TFT_CS        10
+  #define TFT_CS        10   // -1 for modules without a CS pin (see ST7789_SPI_MODE)
   #define TFT_DC        7
   #define TFT_RST       15
+
+  // 1 = landscape, 3 = landscape rotated 180 degrees (0 / 2 = portrait)
+  #define TFT_ROTATION  1
+#endif
+
+#if DISPLAY_TYPE == 2
+  // ST7735S panel variant. If colours are wrong (red/blue swapped) or there is
+  // a garbage stripe at one edge, try another value:
+  //   INITR_BLACKTAB      1.8" 128x160 (most common)
+  //   INITR_GREENTAB      1.8" 128x160 (green tab on the screen protector)
+  //   INITR_REDTAB        1.8" 128x160 (red tab)
+  //   INITR_MINI160x80    0.96" 80x160
+  //   INITR_MINI160x80_PLUGIN  0.96" 80x160 IPS (inverted colours)
+  #define ST7735_TAB      INITR_BLACKTAB
+  #define TFT_SPI_HZ      27000000
+#elif DISPLAY_TYPE == 3
+  // ST7789V panel size (native portrait resolution):
+  //   240, 240  -> 1.3" / 1.54"
+  //   240, 320  -> 2.0" / 2.4"
+  //   135, 240  -> 1.14"
+  //   170, 320  -> 1.9"
+  #define ST7789_WIDTH    240
+  #define ST7789_HEIGHT   240
+  // Most modules: SPI_MODE0. 240x240 modules WITHOUT a CS pin: set TFT_CS to -1
+  // and use SPI_MODE3.
+  #define ST7789_SPI_MODE SPI_MODE0
+  #define TFT_SPI_HZ      40000000
 #endif
 
 // ========== POWER SAVING / BRIGHTNESS ==========
@@ -58,13 +87,18 @@
 #define LONG_PRESS_MS      800
 #define BATTERY_READ_MS    1000
 
+// ========== SERIAL DEBUG ==========
+// 1 = print GPS / speed / alert status to the Serial Monitor once per second
+#define DEBUG_SERIAL       1
+#define DEBUG_INTERVAL_MS  1000
+
 // ========== GPS POWER SAVE ==========
 #define GPS_PS_LPMODE        1
 #define TRIPLE_CLICK_GAP_MS  500
 #define UBX_ACK_TIMEOUT_MS   1000
 
 #if DISPLAY_TYPE == 2 || DISPLAY_TYPE == 3
-  #define TFT_BL_PIN           13
+  #define TFT_BL_PIN           13  // -1 if BL is wired to 3V3
   #define TFT_BL_ACTIVE_HIGH   1
   #define TFT_BL_PWM_HZ        5000
 #endif
@@ -98,6 +132,7 @@ HardwareSerial GPSSerial(2);
 
 // ========== STATE ==========
 enum Mode { MODE_SET, MODE_RUN };
+enum UbxResult { UBX_ACK, UBX_NAK, UBX_TIMEOUT };
 Mode currentMode = MODE_SET;
 unsigned long lastButtonMs = 0;
 unsigned long alertStartMs = 0;
@@ -116,6 +151,48 @@ bool gpsApplyPending = false;
 unsigned long toastUntilMs = 0;
 char toastLine1[24] = "";
 char toastLine2[24] = "";
+
+// ========== TFT LAYOUT ==========
+#if DISPLAY_TYPE == 2 || DISPLAY_TYPE == 3
+  #define COL_BG    ST77XX_BLACK
+  #define COL_TEXT  ST77XX_WHITE
+  #define COL_DIM   0x7BEF   // grey
+  #define COL_LIMIT ST77XX_YELLOW
+
+  uint8_t szSmall, szMid, szBig;   // text sizes chosen for the panel
+  int16_t topH, bottomY, speedY, unitY, speedX;
+
+  void computeLayout() {
+    int16_t W = display.width();
+    int16_t H = display.height();
+    szSmall = (H >= 200) ? 2 : 1;
+    szMid   = (H >= 120) ? 2 : 1;
+    szBig   = (H >= 200) ? 9 : (H >= 120 ? 6 : 4);
+    while (szBig > 2 && 3 * 6 * szBig > W - 4) szBig--;   // "200" must fit
+
+    topH = 8 * szSmall + 6;
+    int16_t bottomH = 8 * szMid + 6;
+    bottomY = H - bottomH + 3;
+    int16_t block = 8 * szBig + 4 + 8 * szMid;            // speed + "km/h"
+    speedY = topH + (H - topH - bottomH - block) / 2;
+    unitY  = speedY + 8 * szBig + 4;
+    speedX = (W - (3 * 6 * szBig - szBig)) / 2;            // 3-digit field
+  }
+
+  uint8_t fitSize(const char *s, int16_t maxW, uint8_t maxSize) {
+    uint8_t sz = maxSize;
+    while (sz > 1 && (int16_t)(strlen(s) * 6 * sz) > maxW) sz--;
+    return sz;
+  }
+
+  void printCentered(const char *s, int16_t y, uint8_t size, uint16_t fg) {
+    display.setTextSize(size);
+    display.setTextColor(fg);
+    int16_t w = strlen(s) * 6 * size - size;
+    display.setCursor((display.width() - w) / 2, y);
+    display.print(s);
+  }
+#endif
 
 void setup() {
   setCpuFrequencyMhz(CPU_FREQ_MHZ);
@@ -141,14 +218,21 @@ void setup() {
   }
   display.setTextColor(SSD1306_WHITE);
 #else
+  // Start SPI on our pins first, without MISO. Otherwise the default ESP32-S3
+  // SPI pins are used and MISO lands on GPIO13, which is the backlight pin.
+  SPI.begin(TFT_SCK, -1, TFT_MOSI, -1);
   #if DISPLAY_TYPE == 2
-    display.initR(INITR_BLACKTAB);
+    display.initR(ST7735_TAB);
   #else
-    display.init(240, 320);
+    display.init(ST7789_WIDTH, ST7789_HEIGHT, ST7789_SPI_MODE);
   #endif
-  display.setRotation(1);
-  display.fillScreen(ST77XX_BLACK);
-  display.setTextColor(ST77XX_WHITE);
+  display.setSPISpeed(TFT_SPI_HZ);
+  display.setRotation(TFT_ROTATION);
+  display.fillScreen(COL_BG);
+  display.setTextColor(COL_TEXT);
+  display.setTextWrap(false);
+  computeLayout();
+  Serial.printf("TFT %dx%d ready\n", display.width(), display.height());
 #endif
 
   display.setTextSize(1);
@@ -196,8 +280,23 @@ void loop() {
 
   updateAlert();
   updateDisplay();
+  printDebug();
 
   delay(50);
+}
+
+void printDebug() {
+#if DEBUG_SERIAL
+  static unsigned long lastDbg = 0;
+  if (millis() - lastDbg < DEBUG_INTERVAL_MS) return;
+  lastDbg = millis();
+  Serial.printf("chars:%lu  fix:%s  sats:%d  speed:%.1f km/h  limit:%.1f  bat:%d%%  alert:%s\n",
+                (unsigned long)gps.charsProcessed(),
+                gps.location.isValid() ? "yes" : "no",
+                gps.satellites.isValid() ? (int)gps.satellites.value() : 0,
+                gps.speed.isValid() ? gps.speed.kmph() : 0.0,
+                thresholdKmh, batteryPct, alertActive ? "ON" : "off");
+#endif
 }
 
 void handleButtons() {
@@ -261,8 +360,6 @@ void handleButtons() {
   upPrev = upNow;
   downPrev = downNow;
 }
-
-enum UbxResult { UBX_ACK, UBX_NAK, UBX_TIMEOUT };
 
 void ubxSend(uint8_t cls, uint8_t id, const uint8_t *payload, uint8_t len) {
   uint8_t frame[16];
@@ -351,13 +448,15 @@ void drawToast() {
   display.print(toastLine2);
   display.display();
 #else
-  display.fillScreen(ST77XX_BLACK);
-  display.setTextSize(2);
-  display.setCursor(10, 30);
-  display.print(toastLine1);
-  display.setTextSize(4);
-  display.setCursor(10, 70);
-  display.print(toastLine2);
+  int16_t W = display.width(), H = display.height();
+  display.fillScreen(COL_BG);
+  uint8_t s1 = fitSize(toastLine1, W - 8, 3);
+  uint8_t s2 = fitSize(toastLine2, W - 8, H >= 200 ? 6 : 4);
+  uint16_t c2 = COL_TEXT;
+  if (strcmp(toastLine2, "ON") == 0) c2 = ST77XX_GREEN;
+  else if (strcmp(toastLine2, "FAILED") == 0) c2 = ST77XX_RED;
+  printCentered(toastLine1, H / 2 - 8 * s1 - 6, s1, COL_DIM);
+  printCentered(toastLine2, H / 2 + 6, s2, c2);
 #endif
 }
 
@@ -495,26 +594,93 @@ void showSetScreen() {
   display.print(F("%"));
   display.display();
 #else
-  display.fillScreen(ST77XX_BLACK);
-  display.setTextSize(2);
-  display.setCursor(30, 10);
-  display.print(F("LIMIT"));
-  display.setTextSize(4);
+  int16_t W = display.width(), H = display.height();
+  display.fillScreen(COL_BG);
+
+  uint8_t vs = fitSize("200.0", W - 8, szBig);
+  int16_t vy = (H - 8 * vs) / 2;
+  printCentered("SPEED LIMIT", vy - 8 * szMid - 10, szMid, COL_DIM);
+
   char buf[8];
   snprintf(buf, sizeof(buf), "%.1f", thresholdKmh);
-  int16_t x1, y1; uint16_t w, h;
-  display.getTextBounds(buf, 0, 0, &x1, &y1, &w, &h);
-  display.setCursor((display.width() - w) / 2, 50);
-  display.print(buf);
-  display.setTextSize(2);
-  display.setCursor(70, 100);
-  display.print(F("km/h"));
-  display.setCursor(10, display.height() - 20);
-  display.print(F("Bat "));
-  display.print(batteryPct);
-  display.print(F("%"));
+  printCentered(buf, vy, vs, COL_LIMIT);
+  printCentered("km/h", vy + 8 * vs + 6, szMid, COL_DIM);
+
+  char batBuf[12];
+  snprintf(batBuf, sizeof(batBuf), "Bat %d%%", batteryPct);
+  display.setTextSize(szSmall);
+  display.setTextColor(COL_DIM);
+  display.setCursor(W - 2 - (int16_t)strlen(batBuf) * 6 * szSmall + szSmall, H - 8 * szSmall - 2);
+  display.print(batBuf);
 #endif
 }
+
+#if DISPLAY_TYPE == 2 || DISPLAY_TYPE == 3
+// Draws only the parts of the run screen that changed, so the digits do not
+// flicker. Text is drawn with a background colour over a fixed-width field,
+// which overwrites the old value without clearing the screen first.
+void tftDrawRun(int speedInt, int sats, int bat, bool show, bool over) {
+  static int lSpeed = -1, lSats = -1, lBat = -1;
+  static float lLimit = -1;
+  static bool lShow = false, lOver = false, lPs = false;
+  int16_t W = display.width();
+  bool full = forceRedraw;
+
+  if (full) {
+    forceRedraw = false;
+    display.fillScreen(COL_BG);
+    display.drawFastHLine(0, topH - 3, W, COL_DIM);
+    printCentered("km/h", unitY, szMid, COL_DIM);
+  }
+
+  // Top bar: satellites (+ PS) on the left, battery on the right
+  if (full || sats != lSats || bat != lBat || gpsPowerSave != lPs) {
+    display.fillRect(0, 0, W, topH - 4, COL_BG);
+    display.setTextSize(szSmall);
+    display.setTextColor(sats >= 4 ? ST77XX_GREEN : ST77XX_ORANGE);
+    display.setCursor(2, 2);
+    display.print(F("SAT "));
+    display.print(sats);
+    if (gpsPowerSave) {
+      display.setTextColor(ST77XX_CYAN);
+      display.print(F(" PS"));
+    }
+    char b[8];
+    snprintf(b, sizeof(b), "%d%%", bat);
+    display.setTextColor(bat <= 20 ? ST77XX_RED : COL_TEXT);
+    display.setCursor(W - 2 - (int16_t)strlen(b) * 6 * szSmall + szSmall, 2);
+    display.print(b);
+  }
+
+  // Speed: white normally, red over the limit, blank during the flash-off phase
+  if (full || speedInt != lSpeed || show != lShow || over != lOver) {
+    if (show) {
+      char s[8];
+      snprintf(s, sizeof(s), "%3d", speedInt > 999 ? 999 : speedInt);
+      display.setTextSize(szBig);
+      display.setTextColor(over ? ST77XX_RED : COL_TEXT, COL_BG);
+      display.setCursor(speedX, speedY);
+      display.print(s);
+    } else {
+      display.fillRect(speedX, speedY, 3 * 6 * szBig, 8 * szBig, COL_BG);
+    }
+  }
+
+  // Bottom: current limit
+  if (full || thresholdKmh != lLimit) {
+    char l[16];
+    snprintf(l, sizeof(l), "LIMIT %5.1f", thresholdKmh);
+    display.setTextSize(szMid);
+    display.setTextColor(COL_LIMIT, COL_BG);
+    int16_t w = strlen(l) * 6 * szMid - szMid;
+    display.setCursor((W - w) / 2, bottomY);
+    display.print(l);
+  }
+
+  lSpeed = speedInt; lSats = sats; lBat = bat; lLimit = thresholdKmh;
+  lShow = show; lOver = over; lPs = gpsPowerSave;
+}
+#endif
 
 void updateDisplay() {
   if (currentMode == MODE_SET || toastUntilMs != 0) return;
@@ -525,6 +691,10 @@ void updateDisplay() {
 
   int speedInt = (int)(speed + 0.5f);
   bool show = !alertActive || displayOn;
+
+#if DISPLAY_TYPE == 2 || DISPLAY_TYPE == 3
+  tftDrawRun(speedInt, sats, bat, show, alertActive);
+#else
   static int lastSpeed = -1, lastSats = -1, lastBat = -1;
   static float lastLimit = -1;
   static bool lastShow = false, lastPs = false;
@@ -586,35 +756,6 @@ void updateDisplay() {
     display.print(thresholdKmh, 0);
   }
   display.display();
-#else
-  if (!alertActive || displayOn) {
-    display.fillScreen(ST77XX_BLACK);
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.print(F("SAT "));
-    display.print(sats);
-    if (gpsPowerSave) display.print(F(" PS"));
-    char batBuf[8];
-    snprintf(batBuf, sizeof(batBuf), "%d%%", (int)bat);
-    display.setCursor(display.width() - 8 * strlen(batBuf), 0);
-    display.print(batBuf);
-
-    display.setTextSize(6);
-    char spdBuf[8];
-    snprintf(spdBuf, sizeof(spdBuf), "%.0f", speed);
-    int16_t x1, y1; uint16_t w, h;
-    display.getTextBounds(spdBuf, 0, 0, &x1, &y1, &w, &h);
-    display.setCursor((display.width() - w) / 2, display.height() / 2 - 40);
-    display.print(spdBuf);
-
-    display.setTextSize(2);
-    display.setCursor((display.width() - 48) / 2, display.height() / 2 + 20);
-    display.print(F("km/h"));
-    display.setCursor(10, display.height() - 30);
-    display.print(F("Limit "));
-    display.print(thresholdKmh, 1);
-  } else {
-    display.fillScreen(ST77XX_BLACK);
-  }
+#endif
 #endif
 }
