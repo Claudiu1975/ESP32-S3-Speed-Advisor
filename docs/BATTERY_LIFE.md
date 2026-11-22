@@ -36,6 +36,10 @@ Example, ST7789V, GPS power save off, full brightness: 27 + 45 + 50 + 2.3 = 124.
 | ST7735S | 15 h | 18 h | 19 h | 19 h | 23 h | 25 h |
 | ST7789V | 12 h | 15 h | 17 h | 15 h | 19 h | 22 h |
 
+Spreadsheet version with live formulas: [Battery_Life_1800mAh.xlsx](Battery_Life_1800mAh.xlsx).
+
+Gain from GPS power save at full brightness: 6.0 h (128x32), 4.9 h (128x64), 3.9 h (ST7735S), 2.4 h (ST7789V).
+
 ## What this means
 
 - **GPS power save** is the biggest single saving, because the GPS module is the largest consumer. It only helps if your module accepts the power-save command (some clone modules do not) and with a good signal; with a weak signal the chip stays awake longer.
