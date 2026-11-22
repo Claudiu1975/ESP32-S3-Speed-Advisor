@@ -49,8 +49,8 @@ GPS accuracy depends on satellite visibility, antenna placement, and environment
 
 | Function       | GPIO | Notes                                      |
 |----------------|------|--------------------------------------------|
-| GPS RX         | 16   | GPS TX → ESP RX                            |
-| GPS TX         | 17   | ESP TX → GPS RX                            |
+| GPS RX         | 44   | GPS TX → ESP RX (board label RX)           |
+| GPS TX         | 43   | ESP TX → GPS RX (board label TX)           |
 | Buzzer         | 4    | Active buzzer + pin (other pin to GND)     |
 | Button Up      | 5    | Internal pull-up, other side to GND        |
 | Button Down    | 6    | Internal pull-up, other side to GND        |
@@ -188,8 +188,8 @@ ESP32-S3 Super Mini
 ┌─────────────────────────┐
 │ 5V  3V3  GND            │
 │                         │
-│ GPIO16 ← GPS TX         │
-│ GPIO17 → GPS RX         │
+│ GPIO44 ← GPS TX         │
+│ GPIO43 → GPS RX         │
 │ GPIO4  → Buzzer +       │
 │ GPIO5  ← Button Up      │
 │ GPIO6  ← Button Down    │
@@ -203,8 +203,8 @@ ESP32-S3 Super Mini
 GPS GY-NEO6MV2 / NEO-7MV2 / NEO-8MV2
 VCC → 3.3V or 5V (module has regulator)
 GND → GND
-TX  → ESP GPIO16
-RX  → ESP GPIO17
+TX  → ESP GPIO44
+RX  → ESP GPIO43
 (Default baud 9600 — change GPS_BAUD in the sketch if needed)
 
 Buzzer TMB12A03 (active)
@@ -252,7 +252,7 @@ Notes:
 - The setting `GPS_PS_LPMODE` chooses the mode used when power save is on: `1` = Power Save Mode (default), `4` = Eco mode.
 - Some cheap GY-NEO6MV2 boards carry clone chips that ignore the command. In that case the display shows "FAILED" and nothing changes.
 - With a weak signal the receiver stays awake longer, so the saving is smaller and the speed may be slightly less accurate. Test it on a real drive before relying on it.
-- The GPS TX line (GPIO17 to the module's RX) must be connected, because the command is sent over it.
+- The GPS TX line (GPIO43 to the module's RX) must be connected, because the command is sent over it.
 
 ### Estimated runtime on a 1800 mAh battery
 
