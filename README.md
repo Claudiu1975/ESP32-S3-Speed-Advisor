@@ -49,8 +49,8 @@ GPS accuracy depends on satellite visibility, antenna placement, and environment
 
 | Function       | GPIO | Notes                                      |
 |----------------|------|--------------------------------------------|
-| GPS RX         | 16   | GPS TX → ESP RX                            |
-| GPS TX         | 17   | ESP TX → GPS RX                            |
+| GPS RX         | 44   | GPS TX → ESP RX (board label RX)           |
+| GPS TX         | 43   | ESP TX → GPS RX (board label TX)           |
 | Buzzer         | 4    | Active buzzer + pin (other pin to GND)     |
 | Button Up      | 5    | Internal pull-up, other side to GND        |
 | Button Down    | 6    | Internal pull-up, other side to GND        |
@@ -188,8 +188,8 @@ ESP32-S3 Super Mini
 ┌─────────────────────────┐
 │ 5V  3V3  GND            │
 │                         │
-│ GPIO16 ← GPS TX         │
-│ GPIO17 → GPS RX         │
+│ GPIO44 ← GPS TX         │
+│ GPIO43 → GPS RX         │
 │ GPIO4  → Buzzer +       │
 │ GPIO5  ← Button Up      │
 │ GPIO6  ← Button Down    │
@@ -203,8 +203,8 @@ ESP32-S3 Super Mini
 GPS GY-NEO6MV2 / NEO-7MV2 / NEO-8MV2
 VCC → 3.3V or 5V (module has regulator)
 GND → GND
-TX  → ESP GPIO16
-RX  → ESP GPIO17
+TX  → ESP GPIO44
+RX  → ESP GPIO43
 (Default baud 9600 — change GPS_BAUD in the sketch if needed)
 
 Buzzer TMB12A03 (active)
@@ -252,7 +252,26 @@ Notes:
 - The setting `GPS_PS_LPMODE` chooses the mode used when power save is on: `1` = Power Save Mode (default), `4` = Eco mode.
 - Some cheap GY-NEO6MV2 boards carry clone chips that ignore the command. In that case the display shows "FAILED" and nothing changes.
 - With a weak signal the receiver stays awake longer, so the saving is smaller and the speed may be slightly less accurate. Test it on a real drive before relying on it.
-- The GPS TX line (GPIO17 to the module's RX) must be connected, because the command is sent over it.
+- The GPS TX line (GPIO43 to the module's RX) must be connected, because the command is sent over it.
+
+### Estimated runtime on a 1800 mAh battery
+
+Estimates, not measurements. Realistic runtime in hours, using 85 % of the capacity (1530 mAh), with GPS power save off or on and the display at full, medium or lowest brightness (long press Up cycles the levels):
+
+| Display | PS off, full | PS off, medium | PS off, lowest | PS on, full | PS on, medium | PS on, lowest |
+|---------|------|------|------|------|------|------|
+| SSD1306 128x32 | 19 h | 19 h | 19 h | 25 h | 25 h | 26 h |
+| SSD1306 128x64 | 17 h | 18 h | 19 h | 22 h | 23 h | 25 h |
+| ST7735S | 15 h | 18 h | 19 h | 19 h | 23 h | 25 h |
+| ST7789V | 12 h | 15 h | 17 h | 15 h | 19 h | 22 h |
+
+- GPS power save adds about 2 to 6 hours at full brightness (6.0 h on the 128x32, 4.9 h on the 128x64, 3.9 h on the ST7735S, 2.4 h on the ST7789V), provided your module accepts the command.
+- Dimming helps mostly on the TFT versions, where the backlight is the biggest display load (about 5 h on the ST7789V from full to lowest). On the OLEDs the gain is small.
+- Assumptions (ESP32 27 mA, GPS 45 mA or 25 mA with power save, buzzer 5 minutes per hour) and the formula are in [docs/BATTERY_LIFE.md](docs/BATTERY_LIFE.md). The same calculation as a spreadsheet with live formulas is [docs/Battery_Life_1800mAh.xlsx](docs/Battery_Life_1800mAh.xlsx): change the inputs to match your battery and modules.
+
+## Battery life
+
+A calculation of the runtime on a 1800 mAh battery, with GPS power save on or off and at three brightness levels, is in [docs/BATTERY_LIFE.md](docs/BATTERY_LIFE.md).
 
 ## Display layout
 
