@@ -254,6 +254,10 @@ Notes:
 - With a weak signal the receiver stays awake longer, so the saving is smaller and the speed may be slightly less accurate. Test it on a real drive before relying on it.
 - The GPS TX line (GPIO17 to the module's RX) must be connected, because the command is sent over it.
 
+## Battery life
+
+A calculation of the runtime on a 1800 mAh battery, with GPS power save on or off and at three brightness levels, is in [docs/BATTERY_LIFE.md](docs/BATTERY_LIFE.md).
+
 ## Display layout
 
 The run screen uses the same layout on all four displays: a top line (satellites, power save, battery), the speed filling the space in the middle, and the limit on the bottom line. The top and bottom text is drawn 1.5 times larger than the built-in font allows in whole steps, using fractional scaling. The preview below is rendered from the sketch's own drawing code with a stand-in font, so glyph shapes differ slightly from the real display.
