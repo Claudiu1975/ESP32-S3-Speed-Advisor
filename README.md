@@ -229,8 +229,9 @@ Adjust pins in the sketch if your Super Mini silkscreen differs.
 1. Power on. The display shows the threshold speed (starts at 90.0 km/h).
 2. Use the two buttons to increase/decrease the threshold in 0.5 km/h steps.
 3. After a short idle period (or button confirmation), the device switches to normal mode.
-   A short press changes the limit by one step. **Hold a button for about 0.8 s to change the display brightness**: hold Up for brighter, hold Down for dimmer (3 levels). On the TFT versions this needs the BL pin wired to GPIO13.
-   **Triple-click the Down button to switch the GPS power save on or off.** The display confirms with "GPS power save ON / OFF" (or "FAILED" if the module does not answer), and "PS" is shown on the main screen while it is on. The setting is remembered after power-off. A triple click does not change the limit. To lower the limit by 1.5 km/h, click more slowly.
+   A short press changes the limit by one step (Up = +0.5 km/h, Down = -0.5 km/h).
+   **Long press Up (about 0.8 s): cycle the display brightness** (3 levels, then back to the first). On the TFT versions this needs the BL pin wired to GPIO13.
+   **Long press Down (about 0.8 s): switch the GPS power save on or off.** The display confirms with "GPS power save ON / OFF" (or "FAILED" if the module does not answer), and "PS" is shown on the main screen while it is on. The setting is remembered after power-off.
 4. Normal mode shows current GPS speed and satellite count (plus battery percentage).
 5. When speed exceeds the threshold, the buzzer and display flash according to the timing rules above.
 6. Speed must drop below the threshold to reset the alert timer.
@@ -242,9 +243,9 @@ The sketch is tuned to save battery:
 - The CPU runs at 80 MHz (`CPU_FREQ_MHZ`) instead of the default 240 MHz.
 - The display is redrawn only when something visible changes, not on every loop.
 - The battery voltage is sampled once per second.
-- The display brightness can be lowered with a long press (see Usage). On the TFT, the backlight is the biggest display load, so dimming it helps the most.
+- The display brightness can be lowered with a long press of Up (see Usage). On the TFT, the backlight is the biggest display load, so dimming it helps the most.
 
-The GPS module is the largest consumer. By default it runs at full performance. Switch on **GPS power save** with a triple click of the Down button: the sketch sends the u-blox command `UBX-CFG-RXM` (low-power mode) and waits for the module's acknowledgement. In the u-blox NEO-6 datasheet, power save mode at 1 Hz uses about half the power of continuous mode (51 mW against 115 mW at 3.0 V) while still giving one update per second.
+The GPS module is the largest consumer. By default it runs at full performance. Switch on **GPS power save** with a long press of the Down button: the sketch sends the u-blox command `UBX-CFG-RXM` (low-power mode) and waits for the module's acknowledgement. In the u-blox NEO-6 datasheet, power save mode at 1 Hz uses about half the power of continuous mode (51 mW against 115 mW at 3.0 V) while still giving one update per second.
 
 Notes:
 
@@ -252,6 +253,12 @@ Notes:
 - Some cheap GY-NEO6MV2 boards carry clone chips that ignore the command. In that case the display shows "FAILED" and nothing changes.
 - With a weak signal the receiver stays awake longer, so the saving is smaller and the speed may be slightly less accurate. Test it on a real drive before relying on it.
 - The GPS TX line (GPIO17 to the module's RX) must be connected, because the command is sent over it.
+
+## Display layout
+
+The run screen uses the same layout on all four displays: a top line (satellites, power save, battery), the speed filling the space in the middle, and the limit on the bottom line. The top and bottom text is drawn 1.5 times larger than the built-in font allows in whole steps, using fractional scaling. The preview below is rendered from the sketch's own drawing code with a stand-in font, so glyph shapes differ slightly from the real display.
+
+![Display preview](docs/images/display-preview.png)
 
 ## License
 
