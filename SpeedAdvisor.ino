@@ -1,3 +1,4 @@
+// Version: PS_3 (button update: long press Up = brightness, long press Down = GPS power save; larger fonts)
 /*
   ESP32-S3 Super Mini Speed Advisor
   Supports SSD1306 (128x32 / 128x64), ST7735S, ST7789V
@@ -8,6 +9,7 @@
   Use at your own risk.
 */
 
+#include <math.h>
 #include <TinyGPSPlus.h>
 #include <HardwareSerial.h>
 #include <stdio.h>
@@ -94,7 +96,6 @@
 
 // ========== GPS POWER SAVE ==========
 #define GPS_PS_LPMODE        1
-#define TRIPLE_CLICK_GAP_MS  500
 #define UBX_ACK_TIMEOUT_MS   1000
 
 #if DISPLAY_TYPE == 2 || DISPLAY_TYPE == 3
@@ -152,47 +153,102 @@ unsigned long toastUntilMs = 0;
 char toastLine1[24] = "";
 char toastLine2[24] = "";
 
-// ========== TFT LAYOUT ==========
-#if DISPLAY_TYPE == 2 || DISPLAY_TYPE == 3
-  #define COL_BG    ST77XX_BLACK
-  #define COL_TEXT  ST77XX_WHITE
-  #define COL_DIM   0x7BEF   // grey
-  #define COL_LIMIT ST77XX_YELLOW
-
-  uint8_t szSmall, szMid, szBig;   // text sizes chosen for the panel
-  int16_t topH, bottomY, speedY, unitY, speedX;
-
-  void computeLayout() {
-    int16_t W = display.width();
-    int16_t H = display.height();
-    szSmall = (H >= 200) ? 2 : 1;
-    szMid   = (H >= 120) ? 2 : 1;
-    szBig   = (H >= 200) ? 9 : (H >= 120 ? 6 : 4);
-    while (szBig > 2 && 3 * 6 * szBig > W - 4) szBig--;   // "200" must fit
-
-    topH = 8 * szSmall + 6;
-    int16_t bottomH = 8 * szMid + 6;
-    bottomY = H - bottomH + 3;
-    int16_t block = 8 * szBig + 4 + 8 * szMid;            // speed + "km/h"
-    speedY = topH + (H - topH - bottomH - block) / 2;
-    unitY  = speedY + 8 * szBig + 4;
-    speedX = (W - (3 * 6 * szBig - szBig)) / 2;            // 3-digit field
-  }
-
-  uint8_t fitSize(const char *s, int16_t maxW, uint8_t maxSize) {
-    uint8_t sz = maxSize;
-    while (sz > 1 && (int16_t)(strlen(s) * 6 * sz) > maxW) sz--;
-    return sz;
-  }
-
-  void printCentered(const char *s, int16_t y, uint8_t size, uint16_t fg) {
-    display.setTextSize(size);
-    display.setTextColor(fg);
-    int16_t w = strlen(s) * 6 * size - size;
-    display.setCursor((display.width() - w) / 2, y);
-    display.print(s);
-  }
+// ========== DISPLAY LAYOUT (all displays) ==========
+// Top line and bottom line are 1.5x the size they had in PS_1. The speed fills the space between
+// them. Text is drawn from the built-in 5x7 font, scaled by any multiple of 0.5.
+#if DISPLAY_TYPE == 0 || DISPLAY_TYPE == 1
+  #define COL_BG      SSD1306_BLACK
+  #define COL_TEXT    SSD1306_WHITE
+  #define COL_DIM     SSD1306_WHITE
+  #define COL_LIMIT   SSD1306_WHITE
+  #define COL_GREEN   SSD1306_WHITE
+  #define COL_ORANGE  SSD1306_WHITE
+  #define COL_RED     SSD1306_WHITE
+  #define COL_CYAN    SSD1306_WHITE
+  #define DISPLAY_FLUSH() display.display()
+#else
+  #define COL_BG      ST77XX_BLACK
+  #define COL_TEXT    ST77XX_WHITE
+  #define COL_DIM     0x7BEF   // grey
+  #define COL_LIMIT   ST77XX_YELLOW
+  #define COL_GREEN   ST77XX_GREEN
+  #define COL_ORANGE  ST77XX_ORANGE
+  #define COL_RED     ST77XX_RED
+  #define COL_CYAN    ST77XX_CYAN
+  #define DISPLAY_FLUSH() do {} while (0)
 #endif
+
+bool hasTop = true;                 // false on the 128x32 OLED (no room for a top line)
+float tS = 1.5f, bS = 1.5f;         // text scale of the top line / bottom line
+int16_t gapPx = 2, divY = 0, speedTop = 0, speedH = 0, bottomY = 0;
+
+static GFXcanvas1 glyphCanvas(6, 8);   // used to read the pixels of the built-in font
+
+static int16_t rnd(float v) { return (int16_t)(v + 0.5f); }
+static int16_t capH(float sc) { return rnd(7 * sc); }                    // height of capital letters / digits
+static int16_t textW(int n, float sc) { return rnd(n * 6 * sc - sc); }  // width of n characters
+
+void computeLayout() {
+  int16_t H = display.height();
+#if DISPLAY_TYPE == 0 || DISPLAY_TYPE == 1
+  float prevTop = 1, prevBottom = 1;          // sizes used in PS_1
+#else
+  float prevTop = (H >= 200) ? 2 : 1;
+  float prevBottom = (H >= 120) ? 2 : 1;
+#endif
+  hasTop = (H >= 48);
+  tS = 1.5f * prevTop;
+  bS = 1.5f * prevBottom;
+  gapPx = (H <= 64) ? 2 : 4;
+  divY = hasTop ? capH(tS) + 1 : 0;           // thin line under the top line
+  speedTop = hasTop ? divY + 1 + gapPx : 0;
+  bottomY = H - capH(bS);
+  speedH = bottomY - gapPx - speedTop;        // everything between the two lines
+}
+
+// Largest scale (step 0.5) at which n characters fit in maxW x maxH
+float fillScale(int n, int16_t maxW, int16_t maxH) {
+  float s = floorf(fminf(maxH / 7.0f, maxW / (n * 6.0f - 1.0f)) * 2.0f) / 2.0f;
+  return s < 1.0f ? 1.0f : s;
+}
+
+// Wanted scale, reduced in steps of 0.5 until n characters fit in maxW
+float fitScale(int n, float wanted, int16_t maxW) {
+  float s = wanted;
+  while (s > 1.0f && textW(n, s) > maxW) s -= 0.5f;
+  return s;
+}
+
+void drawGlyphScaled(int16_t x, int16_t y, char c, float sc, uint16_t fg) {
+  glyphCanvas.fillScreen(0);
+  glyphCanvas.drawChar(0, 0, c, 1, 0, 1);
+  for (int j = 0; j < 8; j++) {
+    int16_t y0 = y + rnd(j * sc), y1 = y + rnd((j + 1) * sc);
+    int i = 0;
+    while (i < 5) {
+      if (!glyphCanvas.getPixel(i, j)) { i++; continue; }
+      int k = i;
+      while (k < 5 && glyphCanvas.getPixel(k, j)) k++;      // horizontal run of set pixels
+      int16_t x0 = x + rnd(i * sc), x1 = x + rnd(k * sc);
+      display.fillRect(x0, y0, x1 - x0, y1 - y0, fg);
+      i = k;
+    }
+  }
+}
+
+void drawText(int16_t x, int16_t y, const char *s, float sc, uint16_t fg) {
+  for (int k = 0; s[k]; k++) {
+    if (s[k] != ' ') drawGlyphScaled(x + rnd(k * 6 * sc), y, s[k], sc, fg);
+  }
+}
+
+void drawTextCentered(const char *s, int16_t y, float sc, uint16_t fg) {
+  drawText((display.width() - textW(strlen(s), sc)) / 2, y, s, sc, fg);
+}
+
+void drawTextRight(const char *s, int16_t y, float sc, uint16_t fg) {
+  drawText(display.width() - 1 - textW(strlen(s), sc), y, s, sc, fg);
+}
 
 void setup() {
   setCpuFrequencyMhz(CPU_FREQ_MHZ);
@@ -217,6 +273,7 @@ void setup() {
     Serial.println(F("SSD1306 allocation failed"));
   }
   display.setTextColor(SSD1306_WHITE);
+  computeLayout();
 #else
   // Start SPI on our pins first, without MISO. Otherwise the default ESP32-S3
   // SPI pins are used and MISO lands on GPIO13, which is the backlight pin.
@@ -303,24 +360,20 @@ void handleButtons() {
   static bool upPrev = HIGH, downPrev = HIGH;
   static unsigned long upDownMs = 0, downDownMs = 0;
   static bool upLongDone = false, downLongDone = false;
-  static uint8_t downClicks = 0;
-  static unsigned long lastDownClickMs = 0;
-  static float limitBeforeClicks = 0;
   bool upNow = digitalRead(BTN_UP_PIN);
   bool downNow = digitalRead(BTN_DOWN_PIN);
   unsigned long now = millis();
 
+  // UP: short = limit +STEP, long = cycle brightness
   if (upNow == LOW && upPrev == HIGH) {
     upDownMs = now;
     upLongDone = false;
   }
   if (upNow == LOW && !upLongDone && now - upDownMs >= LONG_PRESS_MS) {
     upLongDone = true;
-    downClicks = 0;
-    changeBrightness(+1);
+    cycleBrightness();
   }
   if (upNow == HIGH && upPrev == LOW && !upLongDone) {
-    downClicks = 0;
     thresholdKmh += STEP;
     if (thresholdKmh > 200.0f) thresholdKmh = 200.0f;
     lastButtonMs = now;
@@ -328,33 +381,21 @@ void handleButtons() {
     showSetScreen();
   }
 
+  // DOWN: short = limit -STEP, long = GPS power save on/off
   if (downNow == LOW && downPrev == HIGH) {
     downDownMs = now;
     downLongDone = false;
   }
   if (downNow == LOW && !downLongDone && now - downDownMs >= LONG_PRESS_MS) {
     downLongDone = true;
-    downClicks = 0;
-    changeBrightness(-1);
+    toggleGpsPowerSave();
   }
   if (downNow == HIGH && downPrev == LOW && !downLongDone) {
-    if (downClicks == 0 || now - lastDownClickMs > TRIPLE_CLICK_GAP_MS) {
-      downClicks = 0;
-      limitBeforeClicks = thresholdKmh;
-    }
-    downClicks++;
-    lastDownClickMs = now;
+    thresholdKmh -= STEP;
+    if (thresholdKmh < 5.0f) thresholdKmh = 5.0f;
     lastButtonMs = now;
-    if (downClicks >= 3) {
-      downClicks = 0;
-      thresholdKmh = limitBeforeClicks;
-      toggleGpsPowerSave();
-    } else {
-      thresholdKmh -= STEP;
-      if (thresholdKmh < 5.0f) thresholdKmh = 5.0f;
-      currentMode = MODE_SET;
-      showSetScreen();
-    }
+    currentMode = MODE_SET;
+    showSetScreen();
   }
 
   upPrev = upNow;
@@ -429,43 +470,22 @@ void showToast(const char *l1, const char *l2) {
 }
 
 void drawToast() {
-#if DISPLAY_TYPE == 0
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setCursor(0, 2);
-  display.print(toastLine1);
-  display.setTextSize(2);
-  display.setCursor(0, 14);
-  display.print(toastLine2);
-  display.display();
-#elif DISPLAY_TYPE == 1
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setCursor(0, 12);
-  display.print(toastLine1);
-  display.setTextSize(3);
-  display.setCursor(0, 30);
-  display.print(toastLine2);
-  display.display();
-#else
   int16_t W = display.width(), H = display.height();
   display.fillScreen(COL_BG);
-  uint8_t s1 = fitSize(toastLine1, W - 8, 3);
-  uint8_t s2 = fitSize(toastLine2, W - 8, H >= 200 ? 6 : 4);
+  float s1 = fitScale(strlen(toastLine1), hasTop ? tS : bS, W - 4);
+  drawTextCentered(toastLine1, 0, s1, COL_DIM);
+  int16_t y2 = capH(s1) + rnd(s1) + gapPx;         // room for descenders (p, y, g) and a gap
+  int16_t h2 = H - y2;
+  float s2 = fillScale(strlen(toastLine2), W - 4, h2);
   uint16_t c2 = COL_TEXT;
-  if (strcmp(toastLine2, "ON") == 0) c2 = ST77XX_GREEN;
-  else if (strcmp(toastLine2, "FAILED") == 0) c2 = ST77XX_RED;
-  printCentered(toastLine1, H / 2 - 8 * s1 - 6, s1, COL_DIM);
-  printCentered(toastLine2, H / 2 + 6, s2, c2);
-#endif
+  if (strcmp(toastLine2, "ON") == 0) c2 = COL_GREEN;
+  else if (strcmp(toastLine2, "FAILED") == 0) c2 = COL_RED;
+  drawTextCentered(toastLine2, y2 + (h2 - capH(s2)) / 2, s2, c2);
+  DISPLAY_FLUSH();
 }
 
-void changeBrightness(int delta) {
-  int level = brightnessLevel + delta;
-  if (level < 0) level = 0;
-  if (level > 2) level = 2;
-  if (level == brightnessLevel) return;
-  brightnessLevel = level;
+void cycleBrightness() {
+  brightnessLevel = (brightnessLevel + 1) % 3;   // 0 -> 1 -> 2 -> 0 ...
   applyBrightness();
   forceRedraw = true;
   if (currentMode == MODE_SET) showSetScreen();
@@ -557,205 +577,101 @@ float readBatteryPercent() {
 }
 
 void showSetScreen() {
-#if DISPLAY_TYPE == 0
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setCursor(20, 0);
-  display.print(F("LIMIT"));
-  display.setTextSize(2);
-  char buf[8];
-  snprintf(buf, sizeof(buf), "%.1f", thresholdKmh);
-  int16_t x1, y1; uint16_t w, h;
-  display.getTextBounds(buf, 0, 0, &x1, &y1, &w, &h);
-  display.setCursor((128 - w) / 2, 12);
-  display.print(buf);
-  display.display();
-#elif DISPLAY_TYPE == 1
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setCursor(28, 4);
-  display.print(F("SPEED LIMIT"));
-  display.drawLine(10, 16, 118, 16, SSD1306_WHITE);
-
-  display.setTextSize(3);
-  char buf[8];
-  snprintf(buf, sizeof(buf), "%.1f", thresholdKmh);
-  int16_t x1, y1; uint16_t w, h;
-  display.getTextBounds(buf, 0, 0, &x1, &y1, &w, &h);
-  display.setCursor((128 - w) / 2, 22);
-  display.print(buf);
-
-  display.setTextSize(1);
-  display.setCursor(46, 50);
-  display.print(F("km/h"));
-  display.setCursor(4, 56);
-  display.print(F("Bat "));
-  display.print(batteryPct);
-  display.print(F("%"));
-  display.display();
-#else
-  int16_t W = display.width(), H = display.height();
+  int16_t W = display.width();
   display.fillScreen(COL_BG);
 
-  uint8_t vs = fitSize("200.0", W - 8, szBig);
-  int16_t vy = (H - 8 * vs) / 2;
-  printCentered("SPEED LIMIT", vy - 8 * szMid - 10, szMid, COL_DIM);
+  char v[8];
+  snprintf(v, sizeof(v), "%.1f", thresholdKmh);
+  float sc = fillScale(strlen(v), W - 4, speedH);
+  drawTextCentered(v, speedTop + (speedH - capH(sc)) / 2, sc, COL_LIMIT);
 
-  char buf[8];
-  snprintf(buf, sizeof(buf), "%.1f", thresholdKmh);
-  printCentered(buf, vy, vs, COL_LIMIT);
-  printCentered("km/h", vy + 8 * vs + 6, szMid, COL_DIM);
-
-  char batBuf[12];
-  snprintf(batBuf, sizeof(batBuf), "Bat %d%%", batteryPct);
-  display.setTextSize(szSmall);
-  display.setTextColor(COL_DIM);
-  display.setCursor(W - 2 - (int16_t)strlen(batBuf) * 6 * szSmall + szSmall, H - 8 * szSmall - 2);
-  display.print(batBuf);
-#endif
+  if (hasTop) {
+    display.drawFastHLine(0, divY, W, COL_DIM);
+    drawTextCentered("LIMIT (km/h)", 0, tS, COL_DIM);
+    char b[12];
+    snprintf(b, sizeof(b), "Bat %d%%", batteryPct);
+    drawTextRight(b, bottomY, bS, COL_DIM);
+  } else {
+    drawTextCentered("LIMIT km/h", bottomY, bS, COL_DIM);
+  }
+  DISPLAY_FLUSH();
 }
 
-#if DISPLAY_TYPE == 2 || DISPLAY_TYPE == 3
-// Draws only the parts of the run screen that changed, so the digits do not
-// flicker. Text is drawn with a background colour over a fixed-width field,
-// which overwrites the old value without clearing the screen first.
-void tftDrawRun(int speedInt, int sats, int bat, bool show, bool over) {
-  static int lSpeed = -1, lSats = -1, lBat = -1;
+// Draws only the parts of the run screen that changed.
+void drawRun(int speedInt, int sats, int bat, bool show, bool over) {
+  static int lSpeed = -1, lN = -1, lSats = -1, lBat = -1;
   static float lLimit = -1;
   static bool lShow = false, lOver = false, lPs = false;
-  int16_t W = display.width();
+  int16_t W = display.width(), H = display.height();
   bool full = forceRedraw;
+  bool changed = false;
+  int n = (speedInt >= 100) ? 3 : 2;                      // digits shown, the speed is as large as possible
+  bool statusChanged = sats != lSats || bat != lBat || gpsPowerSave != lPs;
 
   if (full) {
     forceRedraw = false;
     display.fillScreen(COL_BG);
-    display.drawFastHLine(0, topH - 3, W, COL_DIM);
-    printCentered("km/h", unitY, szMid, COL_DIM);
+    if (hasTop) display.drawFastHLine(0, divY, W, COL_DIM);
+    changed = true;
   }
 
-  // Top bar: satellites (+ PS) on the left, battery on the right
-  if (full || sats != lSats || bat != lBat || gpsPowerSave != lPs) {
-    display.fillRect(0, 0, W, topH - 4, COL_BG);
-    display.setTextSize(szSmall);
-    display.setTextColor(sats >= 4 ? ST77XX_GREEN : ST77XX_ORANGE);
-    display.setCursor(2, 2);
-    display.print(F("SAT "));
-    display.print(sats);
-    if (gpsPowerSave) {
-      display.setTextColor(ST77XX_CYAN);
-      display.print(F(" PS"));
-    }
+  // Top line: satellites (+ PS) on the left, battery on the right
+  if (hasTop && (full || statusChanged)) {
+    display.fillRect(0, 0, W, divY, COL_BG);
+    char l[16];
+    snprintf(l, sizeof(l), "SAT %d", sats);
+    drawText(1, 0, l, tS, sats >= 4 ? COL_GREEN : COL_ORANGE);
+    if (gpsPowerSave) drawText(1 + rnd(strlen(l) * 6 * tS), 0, " PS", tS, COL_CYAN);
     char b[8];
     snprintf(b, sizeof(b), "%d%%", bat);
-    display.setTextColor(bat <= 20 ? ST77XX_RED : COL_TEXT);
-    display.setCursor(W - 2 - (int16_t)strlen(b) * 6 * szSmall + szSmall, 2);
-    display.print(b);
+    drawTextRight(b, 0, tS, bat <= 20 ? COL_RED : COL_TEXT);
+    changed = true;
   }
 
-  // Speed: white normally, red over the limit, blank during the flash-off phase
-  if (full || speedInt != lSpeed || show != lShow || over != lOver) {
+  // Middle: the speed, red over the limit, blank during the flash-off phase
+  if (full || speedInt != lSpeed || n != lN || show != lShow || over != lOver) {
+    display.fillRect(0, speedTop, W, speedH, COL_BG);
     if (show) {
       char s[8];
-      snprintf(s, sizeof(s), "%3d", speedInt > 999 ? 999 : speedInt);
-      display.setTextSize(szBig);
-      display.setTextColor(over ? ST77XX_RED : COL_TEXT, COL_BG);
-      display.setCursor(speedX, speedY);
-      display.print(s);
-    } else {
-      display.fillRect(speedX, speedY, 3 * 6 * szBig, 8 * szBig, COL_BG);
+      snprintf(s, sizeof(s), "%*d", n, speedInt > 999 ? 999 : speedInt);
+      float sc = fillScale(n, W - 4, speedH);
+      drawTextCentered(s, speedTop + (speedH - capH(sc)) / 2, sc, over ? COL_RED : COL_TEXT);
     }
+    changed = true;
   }
 
-  // Bottom: current limit
-  if (full || thresholdKmh != lLimit) {
-    char l[16];
-    snprintf(l, sizeof(l), "LIMIT %5.1f", thresholdKmh);
-    display.setTextSize(szMid);
-    display.setTextColor(COL_LIMIT, COL_BG);
-    int16_t w = strlen(l) * 6 * szMid - szMid;
-    display.setCursor((W - w) / 2, bottomY);
-    display.print(l);
+  // Bottom line: the limit (on the 128x32 OLED also satellites and battery)
+  if (full || thresholdKmh != lLimit || (!hasTop && statusChanged)) {
+    display.fillRect(0, bottomY, W, H - bottomY, COL_BG);
+    char opt[3][24];
+    if (hasTop) {
+      snprintf(opt[0], sizeof(opt[0]), "LIMIT %.1f", thresholdKmh);
+      snprintf(opt[1], sizeof(opt[1]), "LIM %.1f", thresholdKmh);
+      snprintf(opt[2], sizeof(opt[2]), "%.1f", thresholdKmh);
+    } else {
+      snprintf(opt[0], sizeof(opt[0]), "S%d L%.1f B%d%s", sats, thresholdKmh, bat, gpsPowerSave ? " P" : "");
+      snprintf(opt[1], sizeof(opt[1]), "S%d L%.0f B%d%s", sats, thresholdKmh, bat, gpsPowerSave ? " P" : "");
+      snprintf(opt[2], sizeof(opt[2]), "L%.0f", thresholdKmh);
+    }
+    int pick = 2;
+    for (int i = 0; i < 3; i++) {                          // first text that fits at this scale
+      if (textW(strlen(opt[i]), bS) <= W - 4) { pick = i; break; }
+    }
+    drawTextCentered(opt[pick], bottomY, bS, COL_LIMIT);
+    changed = true;
   }
 
-  lSpeed = speedInt; lSats = sats; lBat = bat; lLimit = thresholdKmh;
+  lSpeed = speedInt; lN = n; lSats = sats; lBat = bat; lLimit = thresholdKmh;
   lShow = show; lOver = over; lPs = gpsPowerSave;
+  if (changed) DISPLAY_FLUSH();
 }
-#endif
 
 void updateDisplay() {
   if (currentMode == MODE_SET || toastUntilMs != 0) return;
 
   float speed = gps.speed.isValid() ? gps.speed.kmph() : 0.0f;
   int sats = gps.satellites.isValid() ? gps.satellites.value() : 0;
-  int bat = batteryPct;
-
   int speedInt = (int)(speed + 0.5f);
   bool show = !alertActive || displayOn;
-
-#if DISPLAY_TYPE == 2 || DISPLAY_TYPE == 3
-  tftDrawRun(speedInt, sats, bat, show, alertActive);
-#else
-  static int lastSpeed = -1, lastSats = -1, lastBat = -1;
-  static float lastLimit = -1;
-  static bool lastShow = false, lastPs = false;
-  if (!forceRedraw && speedInt == lastSpeed && sats == lastSats && bat == lastBat &&
-      thresholdKmh == lastLimit && show == lastShow && gpsPowerSave == lastPs) {
-    return;
-  }
-  forceRedraw = false;
-  lastSpeed = speedInt; lastSats = sats; lastBat = bat; lastLimit = thresholdKmh; lastShow = show; lastPs = gpsPowerSave;
-
-#if DISPLAY_TYPE == 0
-  display.clearDisplay();
-  if (!alertActive || displayOn) {
-    display.setTextSize(2);
-    char spdBuf[8];
-    snprintf(spdBuf, sizeof(spdBuf), "%.0f", speed);
-    int16_t x1, y1; uint16_t w, h;
-    display.getTextBounds(spdBuf, 0, 0, &x1, &y1, &w, &h);
-    display.setCursor((128 - w) / 2, 4);
-    display.print(spdBuf);
-    display.setTextSize(1);
-    display.setCursor(0, 24);
-    display.print(F("S"));
-    display.print(sats);
-    display.print(F(" L"));
-    display.print(thresholdKmh, 0);
-    display.print(F(" B"));
-    display.print((int)bat);
-    if (gpsPowerSave) display.print(F(" P"));
-  }
-  display.display();
-#elif DISPLAY_TYPE == 1
-  display.clearDisplay();
-  if (!alertActive || displayOn) {
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.print(F("SAT "));
-    display.print(sats);
-    if (gpsPowerSave) display.print(F(" PS"));
-    char batBuf[8];
-    snprintf(batBuf, sizeof(batBuf), "%d%%", (int)bat);
-    display.setCursor(128 - 6 * strlen(batBuf), 0);
-    display.print(batBuf);
-    display.drawLine(0, 10, 127, 10, SSD1306_WHITE);
-
-    display.setTextSize(3);
-    char spdBuf[8];
-    snprintf(spdBuf, sizeof(spdBuf), "%.0f", speed);
-    int16_t x1, y1; uint16_t w, h;
-    display.getTextBounds(spdBuf, 0, 0, &x1, &y1, &w, &h);
-    display.setCursor((128 - w) / 2, 18);
-    display.print(spdBuf);
-
-    display.setTextSize(1);
-    display.setCursor(50, 46);
-    display.print(F("km/h"));
-    display.setCursor(0, 56);
-    display.print(F("Limit "));
-    display.print(thresholdKmh, 0);
-  }
-  display.display();
-#endif
-#endif
+  drawRun(speedInt, sats, batteryPct, show, alertActive);
 }
