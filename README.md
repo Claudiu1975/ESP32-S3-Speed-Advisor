@@ -12,12 +12,18 @@ Designed for the ESP32-S3 Super Mini (or Zero-style boards), GY-NEO6MV2 / NEO-7M
   - At 55 s: continuous tone
   - Display flashes in sync with the buzzer
 - Live speed + number of GPS satellites on the display
+- Bluetooth LE + Android web app: the same as the Wi-Fi page, while the phone keeps its mobile data
+- Wi-Fi captive portal: a phone shows the live speed and the over-limit warning (flash, sound, vibration) and has the same settings as the buttons
 - Battery level indication (requires external voltage divider on an ADC pin; the board's own charger handles charging)
 - Support for multiple displays:
   - SSD1306 128×32 I2C
   - SSD1306 128×64 I2C (including GM009605-style modules)
   - ST7735S SPI
   - ST7789V SPI
+
+## Versions
+
+The current version is PS_6 (`SpeedAdvisor.ino`). Every version since PS_4, with a short description, is in [`versions/`](versions/).
 
 ## Disclaimer
 
@@ -128,7 +134,7 @@ Typical Li-ion range used: 3.0 V (0 %) – 4.2 V (100 %).
 | USB Mode | Hardware CDC and JTAG | Default is fine |
 | CPU Frequency | 240 MHz | Default |
 | Flash Size | 4MB (32Mb) | Most Super Minis |
-| Partition Scheme | Default 4MB with spiffs | Or any 4 MB scheme |
+| Partition Scheme | Huge APP (3MB No OTA/1MB SPIFFS) | Needed with Wi-Fi and Bluetooth both on; the default scheme is too small |
 | PSRAM | OPI PSRAM | Enable if your board has PSRAM |
 | Upload Speed | 921600 | Lower to 460800 if upload fails |
 | Core Debug Level | None | |
@@ -140,8 +146,9 @@ Typical Li-ion range used: 3.0 V (0 %) – 4.2 V (100 %).
    - Adafruit SSD1306
    - Adafruit GFX Library
    - Adafruit ST7735 and ST7789 Library
+   - NimBLE-Arduino (by h2zero, 2.x recommended) — for Bluetooth; not needed if `BLE_ENABLE` is 0
 
-6. Open `SpeedAdvisor.ino` and set the display type at the top of the sketch:
+6. Open `SpeedAdvisor.ino`. All four display drivers are built in, and the display type is chosen on the device (see **Selecting the display type** below). `DISPLAY_TYPE` at the top of the sketch is only the type used on the very first start:
    ```cpp
    #define DISPLAY_TYPE 3   // 0 = SSD1306 128x32
                             // 1 = SSD1306 128x64 (GM009605)
@@ -231,10 +238,72 @@ Adjust pins in the sketch if your Super Mini silkscreen differs.
 3. After a short idle period (or button confirmation), the device switches to normal mode.
    A short press changes the limit by one step (Up = +0.5 km/h, Down = -0.5 km/h).
    **Long press Up (about 0.8 s): cycle the display brightness** (3 levels, then back to the first). On the TFT versions this needs the BL pin wired to GPIO13.
-   **Long press Down (about 0.8 s): switch the GPS power save on or off.** The display confirms with "GPS power save ON / OFF" (or "FAILED" if the module does not answer), and "PS" is shown on the main screen while it is on. The setting is remembered after power-off.
+   **Long press Down (about 0.8 s, acted on when you release it): switch the GPS power save on or off.** The display confirms with "GPS power save ON / OFF" (or "FAILED" if the module does not answer), and "PS" is shown on the main screen while it is on. The setting is remembered after power-off.
+   **Hold Down and short press Up: next display type** (see below).
 4. Normal mode shows current GPS speed and satellite count (plus battery percentage).
 5. When speed exceeds the threshold, the buzzer and display flash according to the timing rules above.
 6. Speed must drop below the threshold to reset the alert timer.
+
+## Phone portal (Wi-Fi)
+
+The board opens its own Wi-Fi network. No router or internet is needed.
+
+1. On the phone, connect to the Wi-Fi network **SpeedAdvisor** (password **speedadv**).
+2. The page opens by itself as a "sign in to network" page. If it does not, open **http://192.168.4.1** in the browser.
+3. The page shows:
+   - the live speed (big), satellites, power save and battery
+   - the limit, with − / + buttons (0.5 km/h steps) and a box to type an exact value
+   - brightness Low / Mid / High (same as long press Up)
+   - GPS power save ON / OFF (same as long press Down)
+   - display type OLED 128x32 / OLED 128x64 / ST7735 / ST7789 (same as hold Down + press Up)
+   - **Sound ON/OFF** for the phone alert
+4. Above the limit the speed turns red, "SLOW DOWN" appears and the screen flashes in the same rhythm as the buzzer (faster after 45 s, steady after 55 s). The phone vibrates too (Android). Tap **Sound ON** once to let the phone beep as well; browsers only allow sound after a tap.
+
+Notes:
+
+- The phone will say the network has no internet. Choose to stay connected (Android: "Keep Wi-Fi connection"; iPhone: Cancel → "Use Without Internet"). Mobile data may be paused while connected.
+- The iPhone sign-in window may not allow sound. Open http://192.168.4.1 in Safari instead.
+- A limit changed from the phone shows on the device's set screen for 5 s, like a button press.
+- To save battery, Wi-Fi switches off after `PORTAL_IDLE_OFF_MIN` minutes (default 10) with no phone connected; the display shows "Wi-Fi portal OFF". Power-cycle the board to turn it on again. Set it to 0 to keep Wi-Fi always on.
+- Settings at the top of the sketch: `PORTAL_ENABLE` (0 = no Wi-Fi at all), `PORTAL_SSID`, `PORTAL_PASS` (8+ characters, or `""` for an open network), `PORTAL_TX_POWER`.
+- No extra libraries: `WiFi`, `WebServer` and `DNSServer` come with the ESP32 board package.
+
+## Android app (Bluetooth)
+
+The board also talks Bluetooth LE. The app is a web app in [`docs/app/`](docs/app/): Chrome on Android connects to the board directly over Bluetooth (Web Bluetooth). It does everything the Wi-Fi page does: live speed, the over-limit warning (flash, sound, vibration) and all the settings, including the display type. The phone stays on its normal mobile data.
+
+**Publishing the app (once):** on GitHub open the repository **Settings → Pages**, choose **Deploy from a branch**, branch **main**, folder **/docs**, and save. After a minute the app is at:
+
+**https://claudiu1975.github.io/ESP32-S3-Speed-Advisor/app/**
+
+**Installing on the phone:**
+
+1. Open that address in **Chrome** on Android.
+2. Chrome menu (⋮) → **Add to Home screen** → **Install**. The app gets its own icon and opens full screen. After the first visit it also works without internet.
+3. Turn on Bluetooth (and Location, which Android needs for Bluetooth scanning).
+
+**Using it:**
+
+1. Tap **Connect** and choose **SpeedAdvisor** in the list. The first time, allow Chrome to use Bluetooth.
+2. The app shows the speed, satellites, battery and all the settings. Tap **Sound ON** once if the phone should beep too.
+3. If the connection drops (out of range, board restarted), the app reconnects by itself. Tap **Disconnect** to stop.
+4. While connected the screen stays on.
+
+Notes:
+
+- Android + Chrome only. iPhone Safari and Firefox have no Web Bluetooth.
+- Keep the app in the foreground. Android slows down pages in the background, so the warning sound may stop.
+- Bluetooth and the Wi-Fi portal work at the same time. To leave one out, set `BLE_ENABLE` or `PORTAL_ENABLE` to 0 at the top of the sketch.
+- Bluetooth uses far less power than Wi-Fi (estimated 5–15 mA extra instead of 60–100 mA), so it stays on all the time. Not measured.
+- The protocol (one service, a 12-byte status notification and 1–3 byte commands) is described in the sketch, above `bleStart()`, if you want to use another BLE app.
+
+## Selecting the display type
+
+Hold the **Down** button and short press **Up**. Each press of Up moves to the next type: OLED 128x32 → OLED 128x64 → ST7735 → ST7789 → back to the start. The new type is confirmed with "Display" and its name, and it is remembered after power-off. Releasing Down afterwards does nothing.
+
+With the wrong type selected the screen stays blank or shows garbage, so just keep pressing Up (with Down held) until the picture is right. The type can also be chosen on the phone page (see Phone portal) or in the Android app.
+
+The panel details of the TFTs (`ST7789_WIDTH` / `ST7789_HEIGHT`, `ST7789_SPI_MODE`, `ST7735_TAB`, `TFT_ROTATION`) are still set in the sketch.
 
 ## Power saving
 
@@ -265,6 +334,7 @@ Estimates, not measurements. Realistic runtime in hours, using 85 % of the capac
 | ST7735S | 15 h | 18 h | 19 h | 19 h | 23 h | 25 h |
 | ST7789V | 12 h | 15 h | 17 h | 15 h | 19 h | 22 h |
 
+- The table is for Wi-Fi off. While the portal is on, the ESP32 draws roughly 60–100 mA more, so with a phone connected all the time expect about half the runtime. With nobody connected, Wi-Fi turns itself off after 10 minutes (see Phone portal).
 - GPS power save adds about 2 to 6 hours at full brightness (6.0 h on the 128x32, 4.9 h on the 128x64, 3.9 h on the ST7735S, 2.4 h on the ST7789V), provided your module accepts the command.
 - Dimming helps mostly on the TFT versions, where the backlight is the biggest display load (about 5 h on the ST7789V from full to lowest). On the OLEDs the gain is small.
 - Assumptions (ESP32 27 mA, GPS 45 mA or 25 mA with power save, buzzer 5 minutes per hour) and the formula are in [docs/BATTERY_LIFE.md](docs/BATTERY_LIFE.md). The same calculation as a spreadsheet with live formulas is [docs/Battery_Life_1800mAh.xlsx](docs/Battery_Life_1800mAh.xlsx): change the inputs to match your battery and modules.

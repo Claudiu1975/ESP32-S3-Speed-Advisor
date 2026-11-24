@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<meta name="theme-color" content="#000000">
+<title>Speed Advisor</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<style>
+body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:#000;color:#fff;text-align:center;-webkit-user-select:none;user-select:none}
+.top{display:flex;justify-content:space-between;padding:10px 14px;font-size:18px;color:#aaa}
+#spd{font-size:42vw;font-weight:700;line-height:1;margin:2px 0;font-variant-numeric:tabular-nums}
+#unit{color:#888;margin-top:-6px;font-size:18px}
+#warn{visibility:hidden;background:#e00;color:#fff;font-size:26px;font-weight:700;padding:10px;margin:6px 10px;border-radius:10px}
+body.over #spd{color:#f22}
+body.over #warn{visibility:visible}
+body.flash{background:#600}
+.card{background:#161616;border-radius:14px;margin:10px;padding:12px}
+.lbl{color:#888;font-size:13px;letter-spacing:1px;margin-bottom:6px}
+.row{display:flex;justify-content:center;align-items:center;flex-wrap:wrap}
+.lim{font-size:44px;color:#fd0;font-weight:700;min-width:150px;display:inline-block}
+button{background:#333;color:#fff;border:0;border-radius:10px;font-size:22px;padding:12px 18px;margin:4px;min-width:64px}
+button:active{background:#555}
+button.on{background:#0a7}
+button:disabled{opacity:.35}
+.small button{font-size:17px;padding:12px 10px}
+input{font-size:22px;width:100px;padding:10px;border-radius:10px;border:0;text-align:center;margin:4px}
+#conn{font-size:20px;padding:14px 22px;background:#06c}
+#conn.ok{background:#333}
+#state{color:#f80;font-size:16px;min-height:20px}
+#help{color:#888;font-size:14px;padding:0 16px}
+</style></head><body>
+<div class="top"><span id="sat">SAT -</span><span id="state"></span><span id="bat">--%</span></div>
+<div id="warn">SLOW DOWN</div>
+<div id="spd">--</div><div id="unit">km/h</div>
+<div class="row"><button id="conn" onclick="connClick()">Connect</button><button id="snd" onclick="togSnd()">Sound OFF</button></div>
+<p id="help"></p>
+<div class="card"><div class="lbl">LIMIT (km/h)</div>
+<div class="row"><button class="c" onclick="send([2,0xFF])">&minus;</button><span class="lim" id="lim">--</span><button class="c" onclick="send([2,1])">+</button></div>
+<div class="row"><input id="limIn" type="number" step="0.5" min="5" max="200" inputmode="decimal" placeholder="km/h"><button class="c" onclick="setLim()">Set</button></div></div>
+<div class="card"><div class="lbl">BRIGHTNESS</div><div class="row">
+<button class="c" id="b0" onclick="send([3,0])">Low</button><button class="c" id="b1" onclick="send([3,1])">Mid</button><button class="c" id="b2" onclick="send([3,2])">High</button></div></div>
+<div class="card"><div class="lbl">DISPLAY TYPE</div><div class="row small">
+<button class="c" id="d0" onclick="send([5,0])">OLED 128x32</button><button class="c" id="d1" onclick="send([5,1])">OLED 128x64</button>
+<button class="c" id="d2" onclick="send([5,2])">ST7735</button><button class="c" id="d3" onclick="send([5,3])">ST7789</button></div></div>
+<div class="card"><div class="lbl">GPS POWER SAVE</div><div class="row"><button class="c" id="ps" onclick="send([4,0xFF])">--</button></div></div>
+<script>
+// Must match the UUIDs in SpeedAdvisor.ino
+var SVC='5a1e0001-7b3c-4d2a-9f10-53504545444f',ST='5a1e0002-7b3c-4d2a-9f10-53504545444f',CMD='5a1e0003-7b3c-4d2a-9f10-53504545444f';
+var dev=null,cmdChr=null,S={},wantConn=false,snd=false,ac=null,gain=null,beepOn=false,lastRx=0,wake=null,busy=Promise.resolve();
+function $(i){return document.getElementById(i)}
+function state(t){$('state').textContent=t}
+function enable(on){var b=document.querySelectorAll('.c');for(var i=0;i<b.length;i++)b[i].disabled=!on}
+enable(false);
+
+if(!navigator.bluetooth){
+ $('conn').disabled=true;
+ $('help').textContent='This browser has no Web Bluetooth. Open this page in Chrome on Android (with Bluetooth and Location on).';
+}
+
+function connClick(){
+ initAudio();
+ if(dev&&dev.gatt.connected){wantConn=false;dev.gatt.disconnect();return}
+ navigator.bluetooth.requestDevice({filters:[{services:[SVC]},{namePrefix:'SpeedAdvisor'}],optionalServices:[SVC]})
+ .then(function(d){dev=d;wantConn=true;dev.addEventListener('gattserverdisconnected',onDisc);return connect()})
+ .catch(function(e){state(e.name=='NotFoundError'?'':'Error: '+e.message)});
+}
+function connect(){
+ state('Connecting…');
+ return dev.gatt.connect().then(function(g){return g.getPrimaryService(SVC)})
+ .then(function(s){return Promise.all([s.getCharacteristic(ST),s.getCharacteristic(CMD)])})
+ .then(function(c){
+  cmdChr=c[1];
+  c[0].addEventListener('characteristicvaluechanged',function(e){show(e.target.value)});
+  return c[0].startNotifications().then(function(){return c[0].readValue()});
+ })
+ .then(function(v){show(v);state('');$('conn').textContent='Disconnect';$('conn').className='ok';enable(true);keepAwake()})
+ .catch(function(e){state('Not connected');if(wantConn)setTimeout(retry,2000)});
+}
+function onDisc(){
+ cmdChr=null;enable(false);S.over=0;document.body.classList.remove('over');
+ $('conn').textContent='Connect';$('conn').className='';$('spd').textContent='--';
+ if(wantConn){state('Reconnecting…');setTimeout(retry,1000)}else state('');
+}
+function retry(){if(wantConn&&dev&&!dev.gatt.connected)connect()}
+
+function show(v){
+ lastRx=Date.now();if($('state').textContent=='No data')state('');
+ var spd=v.getUint16(0,true)/10,lim=v.getUint16(2,true)/10,sats=v.getUint8(4),bat=v.getUint8(5),f=v.getUint8(6);
+ S={fix:f&1,over:(f>>1)&1,ps:(f>>2)&1,br:v.getUint8(7),disp:v.getUint8(8),iv:v.getUint16(10,true)};
+ $('spd').textContent=S.fix?Math.round(spd):'--';
+ $('lim').textContent=lim.toFixed(1);
+ $('sat').textContent='SAT '+sats+(S.ps?' PS':'');$('sat').style.color=sats>=4?'#0c0':'#f80';
+ $('bat').textContent=bat+'%';$('bat').style.color=bat<=20?'#f22':'#aaa';
+ for(var i=0;i<3;i++)$('b'+i).className='c'+(S.br==i?' on':'');
+ for(var i=0;i<4;i++)$('d'+i).className='c'+(S.disp==i?' on':'');
+ $('ps').textContent=S.ps?'ON':'OFF';$('ps').className='c'+(S.ps?' on':'');
+ document.body.classList.toggle('over',!!S.over);
+}
+// Writes are queued: Web Bluetooth allows only one operation at a time
+function send(bytes){
+ if(!cmdChr)return;
+ busy=busy.then(function(){return cmdChr.writeValueWithResponse(new Uint8Array(bytes))}).catch(function(){});
+}
+function setLim(){
+ var v=parseFloat($('limIn').value);
+ if(!isNaN(v)){var x=Math.round(v*10);send([1,x&255,x>>8])}
+ $('limIn').value='';$('limIn').blur();
+}
+
+function initAudio(){
+ if(ac)return;
+ var C=window.AudioContext||window.webkitAudioContext;if(!C)return;
+ ac=new C();var o=ac.createOscillator();gain=ac.createGain();o.type='square';o.frequency.value=2400;
+ gain.gain.value=0;o.connect(gain);gain.connect(ac.destination);o.start();
+}
+function togSnd(){
+ initAudio();snd=!snd;if(ac&&ac.resume)ac.resume();
+ $('snd').textContent=snd?'Sound ON':'Sound OFF';$('snd').className=snd?'on':'';
+}
+// Keep the screen on while connected (the app is meant to be watched while driving)
+function keepAwake(){
+ if('wakeLock' in navigator&&!wake)navigator.wakeLock.request('screen').then(function(w){wake=w;w.addEventListener('release',function(){wake=null})}).catch(function(){});
+}
+document.addEventListener('visibilitychange',function(){if(document.visibilityState=='visible'&&dev&&dev.gatt.connected)keepAwake()});
+
+// Same rhythm as the buzzer: on/off every "iv" ms, continuous tone when iv is 0
+setInterval(function(){
+ if(lastRx&&Date.now()-lastRx>3000&&dev&&dev.gatt.connected){state('No data');S.over=0;document.body.classList.remove('over')}
+ var on=false;
+ if(S.over)on=(S.iv==0)||(Math.floor(Date.now()/S.iv)%2==0);
+ document.body.classList.toggle('flash',on);
+ if(gain)gain.gain.value=(snd&&on)?0.25:0;
+ if(navigator.vibrate){if(on&&!beepOn)navigator.vibrate(S.iv==0?60000:S.iv);else if(!on&&beepOn)navigator.vibrate(0)}
+ beepOn=on;
+},50);
+
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(function(){});
+</script></body></html>
