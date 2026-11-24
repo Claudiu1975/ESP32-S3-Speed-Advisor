@@ -1,4 +1,4 @@
-// Version: PS_3 (button update: long press Up = brightness, long press Down = GPS power save; larger fonts)
+// Version: PS_6 (Bluetooth LE: the Android web app shows the speed, warns and changes the settings)
 /*
   ESP32-S3 Super Mini Speed Advisor
   Supports SSD1306 (128x32 / 128x64), ST7735S, ST7789V
@@ -15,26 +15,53 @@
 #include <stdio.h>
 #include <Preferences.h>
 
+// ========== WEB PORTAL (Wi-Fi captive portal) ==========
+// The board opens its own Wi-Fi network. Connect a phone to it and the portal page
+// opens by itself (or browse to http://192.168.4.1). The page shows the live speed,
+// warns when the limit is exceeded and has the same settings as the buttons.
+#define PORTAL_ENABLE        1
+#define PORTAL_SSID          "SpeedAdvisor"
+#define PORTAL_PASS          "speedadv"          // 8+ characters, or "" for an open network
+#define PORTAL_CHANNEL       6
+#define PORTAL_TX_POWER      WIFI_POWER_8_5dBm   // low power: enough inside a car, saves battery
+#define PORTAL_IDLE_OFF_MIN  10   // Wi-Fi off after this many minutes with no phone connected
+                                  // (0 = never). Power-cycle the board to get it back.
+
+#if PORTAL_ENABLE
+  #include <WiFi.h>
+  #include <WebServer.h>
+  #include <DNSServer.h>
+#endif
+
+// ========== BLUETOOTH LE ==========
+// The Android web app (app/ folder, opened in Chrome) connects over Bluetooth LE and
+// does the same as the Wi-Fi page. Needs the NimBLE-Arduino library (1.4.x or 2.x).
+// With Wi-Fi and BLE both on, choose Tools -> Partition Scheme -> "Huge APP (3MB No OTA)".
+#define BLE_ENABLE           1
+#define BLE_NAME             "SpeedAdvisor"
+#define BLE_NOTIFY_MS        300   // how often the app gets the speed
+
+#if BLE_ENABLE
+  #include <NimBLEDevice.h>
+#endif
+
 // ========== DISPLAY SELECTION ==========
 // 0 = SSD1306 128x32 I2C
 // 1 = SSD1306 128x64 I2C (GM009605 style)
 // 2 = ST7735S SPI
 // 3 = ST7789V SPI
+// All four drivers are built in. The type is chosen at run time (hold Down and
+// short press Up, or from the web page) and remembered after power-off.
+// DISPLAY_TYPE is only the type used on the very first start.
 #define DISPLAY_TYPE 3
+#define DISPLAY_TYPE_COUNT 4
 
-#if DISPLAY_TYPE == 0 || DISPLAY_TYPE == 1
-  #include <Wire.h>
-  #include <Adafruit_GFX.h>
-  #include <Adafruit_SSD1306.h>
-#elif DISPLAY_TYPE == 2
-  #include <SPI.h>
-  #include <Adafruit_GFX.h>
-  #include <Adafruit_ST7735.h>
-#elif DISPLAY_TYPE == 3
-  #include <SPI.h>
-  #include <Adafruit_GFX.h>
-  #include <Adafruit_ST7789.h>
-#endif
+#include <Wire.h>
+#include <SPI.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <Adafruit_ST7735.h>
+#include <Adafruit_ST7789.h>
 
 // ========== GPS CONFIG ==========
 #define GPS_BAUD        9600
@@ -45,22 +72,22 @@
 #define BTN_DOWN_PIN    6
 #define BAT_ADC_PIN     1
 
-#if DISPLAY_TYPE == 0 || DISPLAY_TYPE == 1
-  #define I2C_SDA       8
-  #define I2C_SCL       9
-  #define OLED_ADDR     0x3C
-#else
-  #define TFT_MOSI      11
-  #define TFT_SCK       12
-  #define TFT_CS        10   // -1 for modules without a CS pin (see ST7789_SPI_MODE)
-  #define TFT_DC        7
-  #define TFT_RST       15
+// OLED (I2C)
+#define I2C_SDA       8
+#define I2C_SCL       9
+#define OLED_ADDR     0x3C
 
-  // 1 = landscape, 3 = landscape rotated 180 degrees (0 / 2 = portrait)
-  #define TFT_ROTATION  1
-#endif
+// TFT (SPI)
+#define TFT_MOSI      11
+#define TFT_SCK       12
+#define TFT_CS        10   // -1 for modules without a CS pin (see ST7789_SPI_MODE)
+#define TFT_DC        7
+#define TFT_RST       15
 
-#if DISPLAY_TYPE == 2
+// 1 = landscape, 3 = landscape rotated 180 degrees (0 / 2 = portrait)
+#define TFT_ROTATION  1
+
+// ST7735S
   // ST7735S panel variant. If colours are wrong (red/blue swapped) or there is
   // a garbage stripe at one edge, try another value:
   //   INITR_BLACKTAB      1.8" 128x160 (most common)
@@ -69,8 +96,9 @@
   //   INITR_MINI160x80    0.96" 80x160
   //   INITR_MINI160x80_PLUGIN  0.96" 80x160 IPS (inverted colours)
   #define ST7735_TAB      INITR_BLACKTAB
-  #define TFT_SPI_HZ      27000000
-#elif DISPLAY_TYPE == 3
+  #define ST7735_SPI_HZ   27000000
+
+// ST7789V
   // ST7789V panel size (native portrait resolution):
   //   240, 240  -> 1.3" / 1.54"
   //   240, 320  -> 2.0" / 2.4"
@@ -81,8 +109,7 @@
   // Most modules: SPI_MODE0. 240x240 modules WITHOUT a CS pin: set TFT_CS to -1
   // and use SPI_MODE3.
   #define ST7789_SPI_MODE SPI_MODE0
-  #define TFT_SPI_HZ      40000000
-#endif
+  #define ST7789_SPI_HZ   40000000
 
 // ========== POWER SAVING / BRIGHTNESS ==========
 #define CPU_FREQ_MHZ       80
@@ -98,11 +125,9 @@
 #define GPS_PS_LPMODE        1
 #define UBX_ACK_TIMEOUT_MS   1000
 
-#if DISPLAY_TYPE == 2 || DISPLAY_TYPE == 3
-  #define TFT_BL_PIN           13  // -1 if BL is wired to 3V3
-  #define TFT_BL_ACTIVE_HIGH   1
-  #define TFT_BL_PWM_HZ        5000
-#endif
+#define TFT_BL_PIN           13  // TFT backlight. -1 if BL is wired to 3V3
+#define TFT_BL_ACTIVE_HIGH   1
+#define TFT_BL_PWM_HZ        5000
 
 // ========== BATTERY CONFIG ==========
 #define BATTERY_DIVIDER_RATIO  2.0f
@@ -121,15 +146,13 @@ Preferences prefs;
 TinyGPSPlus gps;
 HardwareSerial GPSSerial(2);
 
-#if DISPLAY_TYPE == 0
-  Adafruit_SSD1306 display(128, 32, &Wire, -1);
-#elif DISPLAY_TYPE == 1
-  Adafruit_SSD1306 display(128, 64, &Wire, -1);
-#elif DISPLAY_TYPE == 2
-  Adafruit_ST7735 display(TFT_CS, TFT_DC, TFT_RST);
-#elif DISPLAY_TYPE == 3
-  Adafruit_ST7789 display(TFT_CS, TFT_DC, TFT_RST);
-#endif
+// Only the driver of the selected display type exists; gfx points to it.
+Adafruit_GFX *gfx = nullptr;
+Adafruit_SSD1306 *oled = nullptr;
+Adafruit_ST7735 *st7735 = nullptr;
+Adafruit_ST7789 *st7789 = nullptr;
+int displayType = DISPLAY_TYPE;
+const char *const DISPLAY_NAMES[DISPLAY_TYPE_COUNT] = {"OLED 128x32", "OLED 128x64", "ST7735", "ST7789"};
 
 // ========== STATE ==========
 enum Mode { MODE_SET, MODE_RUN };
@@ -152,31 +175,17 @@ bool gpsApplyPending = false;
 unsigned long toastUntilMs = 0;
 char toastLine1[24] = "";
 char toastLine2[24] = "";
+unsigned long alertIntervalMs = 0;   // current beep interval (0 = continuous tone), for the web page
 
 // ========== DISPLAY LAYOUT (all displays) ==========
 // Top line and bottom line are 1.5x the size they had in PS_1. The speed fills the space between
 // them. Text is drawn from the built-in 5x7 font, scaled by any multiple of 0.5.
-#if DISPLAY_TYPE == 0 || DISPLAY_TYPE == 1
-  #define COL_BG      SSD1306_BLACK
-  #define COL_TEXT    SSD1306_WHITE
-  #define COL_DIM     SSD1306_WHITE
-  #define COL_LIMIT   SSD1306_WHITE
-  #define COL_GREEN   SSD1306_WHITE
-  #define COL_ORANGE  SSD1306_WHITE
-  #define COL_RED     SSD1306_WHITE
-  #define COL_CYAN    SSD1306_WHITE
-  #define DISPLAY_FLUSH() display.display()
-#else
-  #define COL_BG      ST77XX_BLACK
-  #define COL_TEXT    ST77XX_WHITE
-  #define COL_DIM     0x7BEF   // grey
-  #define COL_LIMIT   ST77XX_YELLOW
-  #define COL_GREEN   ST77XX_GREEN
-  #define COL_ORANGE  ST77XX_ORANGE
-  #define COL_RED     ST77XX_RED
-  #define COL_CYAN    ST77XX_CYAN
-  #define DISPLAY_FLUSH() do {} while (0)
-#endif
+// Colours are set in initDisplay(): all white on the OLEDs, real colours on the TFTs
+uint16_t COL_BG, COL_TEXT, COL_DIM, COL_LIMIT, COL_GREEN, COL_ORANGE, COL_RED, COL_CYAN;
+
+void DISPLAY_FLUSH() {
+  if (oled) oled->display();   // the OLED draws into a buffer; the TFTs draw directly
+}
 
 bool hasTop = true;                 // false on the 128x32 OLED (no room for a top line)
 float tS = 1.5f, bS = 1.5f;         // text scale of the top line / bottom line
@@ -189,13 +198,12 @@ static int16_t capH(float sc) { return rnd(7 * sc); }                    // heig
 static int16_t textW(int n, float sc) { return rnd(n * 6 * sc - sc); }  // width of n characters
 
 void computeLayout() {
-  int16_t H = display.height();
-#if DISPLAY_TYPE == 0 || DISPLAY_TYPE == 1
-  float prevTop = 1, prevBottom = 1;          // sizes used in PS_1
-#else
-  float prevTop = (H >= 200) ? 2 : 1;
-  float prevBottom = (H >= 120) ? 2 : 1;
-#endif
+  int16_t H = gfx->height();
+  float prevTop = 1, prevBottom = 1;          // sizes used in PS_1 (OLED)
+  if (!oled) {
+    prevTop = (H >= 200) ? 2 : 1;
+    prevBottom = (H >= 120) ? 2 : 1;
+  }
   hasTop = (H >= 48);
   tS = 1.5f * prevTop;
   bS = 1.5f * prevBottom;
@@ -230,7 +238,7 @@ void drawGlyphScaled(int16_t x, int16_t y, char c, float sc, uint16_t fg) {
       int k = i;
       while (k < 5 && glyphCanvas.getPixel(k, j)) k++;      // horizontal run of set pixels
       int16_t x0 = x + rnd(i * sc), x1 = x + rnd(k * sc);
-      display.fillRect(x0, y0, x1 - x0, y1 - y0, fg);
+      gfx->fillRect(x0, y0, x1 - x0, y1 - y0, fg);
       i = k;
     }
   }
@@ -243,11 +251,71 @@ void drawText(int16_t x, int16_t y, const char *s, float sc, uint16_t fg) {
 }
 
 void drawTextCentered(const char *s, int16_t y, float sc, uint16_t fg) {
-  drawText((display.width() - textW(strlen(s), sc)) / 2, y, s, sc, fg);
+  drawText((gfx->width() - textW(strlen(s), sc)) / 2, y, s, sc, fg);
 }
 
 void drawTextRight(const char *s, int16_t y, float sc, uint16_t fg) {
-  drawText(display.width() - 1 - textW(strlen(s), sc), y, s, sc, fg);
+  drawText(gfx->width() - 1 - textW(strlen(s), sc), y, s, sc, fg);
+}
+
+// Starts the driver of displayType (and drops the previous one, when switching)
+void initDisplay() {
+  delete oled;   oled = nullptr;
+  delete st7735; st7735 = nullptr;
+  delete st7789; st7789 = nullptr;
+
+  if (displayType <= 1) {
+    static bool wireStarted = false;
+    if (!wireStarted) { Wire.begin(I2C_SDA, I2C_SCL); wireStarted = true; }
+    oled = new Adafruit_SSD1306(128, displayType == 0 ? 32 : 64, &Wire, -1);
+    if (!oled->begin(SSD1306_SWITCHCAPVCC, OLED_ADDR, true, false)) {
+      Serial.println(F("SSD1306 allocation failed"));
+    }
+    gfx = oled;
+    COL_BG = SSD1306_BLACK;
+    COL_TEXT = COL_DIM = COL_LIMIT = COL_GREEN = COL_ORANGE = COL_RED = COL_CYAN = SSD1306_WHITE;
+  } else {
+    // Start SPI on our pins first, without MISO. Otherwise the default ESP32-S3
+    // SPI pins are used and MISO lands on GPIO13, which is the backlight pin.
+    static bool spiStarted = false;
+    if (!spiStarted) { SPI.begin(TFT_SCK, -1, TFT_MOSI, -1); spiStarted = true; }
+    if (displayType == 2) {
+      st7735 = new Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
+      st7735->initR(ST7735_TAB);
+      st7735->setSPISpeed(ST7735_SPI_HZ);
+      gfx = st7735;
+    } else {
+      st7789 = new Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
+      st7789->init(ST7789_WIDTH, ST7789_HEIGHT, ST7789_SPI_MODE);
+      st7789->setSPISpeed(ST7789_SPI_HZ);
+      gfx = st7789;
+    }
+    gfx->setRotation(TFT_ROTATION);
+    COL_BG = ST77XX_BLACK;   COL_TEXT = ST77XX_WHITE;  COL_DIM = 0x7BEF;  // grey
+    COL_LIMIT = ST77XX_YELLOW; COL_GREEN = ST77XX_GREEN; COL_ORANGE = ST77XX_ORANGE;
+    COL_RED = ST77XX_RED;    COL_CYAN = ST77XX_CYAN;
+  }
+  gfx->fillScreen(COL_BG);
+  gfx->setTextColor(COL_TEXT);
+  gfx->setTextWrap(false);
+  gfx->setTextSize(1);
+  computeLayout();
+  Serial.printf("Display: %s %dx%d\n", DISPLAY_NAMES[displayType], gfx->width(), gfx->height());
+}
+
+// Shared by the buttons and the web portal. Saved, and confirmed on the new gfx->
+void setDisplayType(int t) {
+  if (t < 0 || t >= DISPLAY_TYPE_COUNT) return;
+  displayType = t;
+  prefs.putUChar("disp", displayType);
+  initDisplay();
+  applyBrightness();
+  forceRedraw = true;
+  showToast("Display", DISPLAY_NAMES[displayType]);
+}
+
+void cycleDisplayType() {
+  setDisplayType((displayType + 1) % DISPLAY_TYPE_COUNT);
 }
 
 void setup() {
@@ -267,38 +335,21 @@ void setup() {
 
   GPSSerial.begin(GPS_BAUD, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
 
-#if DISPLAY_TYPE == 0 || DISPLAY_TYPE == 1
-  Wire.begin(I2C_SDA, I2C_SCL);
-  if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR)) {
-    Serial.println(F("SSD1306 allocation failed"));
-  }
-  display.setTextColor(SSD1306_WHITE);
-  computeLayout();
-#else
-  // Start SPI on our pins first, without MISO. Otherwise the default ESP32-S3
-  // SPI pins are used and MISO lands on GPIO13, which is the backlight pin.
-  SPI.begin(TFT_SCK, -1, TFT_MOSI, -1);
-  #if DISPLAY_TYPE == 2
-    display.initR(ST7735_TAB);
-  #else
-    display.init(ST7789_WIDTH, ST7789_HEIGHT, ST7789_SPI_MODE);
-  #endif
-  display.setSPISpeed(TFT_SPI_HZ);
-  display.setRotation(TFT_ROTATION);
-  display.fillScreen(COL_BG);
-  display.setTextColor(COL_TEXT);
-  display.setTextWrap(false);
-  computeLayout();
-  Serial.printf("TFT %dx%d ready\n", display.width(), display.height());
-#endif
-
-  display.setTextSize(1);
+  displayType = prefs.getUChar("disp", DISPLAY_TYPE);
+  if (displayType >= DISPLAY_TYPE_COUNT) displayType = DISPLAY_TYPE;
+  initDisplay();
   initBacklight();
   applyBrightness();
   batteryPct = (int)(readBatteryPercent() + 0.5f);
   lastBatteryMs = millis();
   lastButtonMs = millis();
   showSetScreen();
+#if PORTAL_ENABLE
+  portalStart();
+#endif
+#if BLE_ENABLE
+  bleStart();
+#endif
 }
 
 void loop() {
@@ -338,6 +389,12 @@ void loop() {
   updateAlert();
   updateDisplay();
   printDebug();
+#if PORTAL_ENABLE
+  portalLoop();
+#endif
+#if BLE_ENABLE
+  bleLoop();
+#endif
 
   delay(50);
 }
@@ -347,59 +404,71 @@ void printDebug() {
   static unsigned long lastDbg = 0;
   if (millis() - lastDbg < DEBUG_INTERVAL_MS) return;
   lastDbg = millis();
-  Serial.printf("chars:%lu  fix:%s  sats:%d  speed:%.1f km/h  limit:%.1f  bat:%d%%  alert:%s\n",
+  Serial.printf("chars:%lu  fix:%s  sats:%d  speed:%.1f km/h  limit:%.1f  bat:%d%%  alert:%s  display:%s\n",
                 (unsigned long)gps.charsProcessed(),
                 gps.location.isValid() ? "yes" : "no",
                 gps.satellites.isValid() ? (int)gps.satellites.value() : 0,
                 gps.speed.isValid() ? gps.speed.kmph() : 0.0,
-                thresholdKmh, batteryPct, alertActive ? "ON" : "off");
+                thresholdKmh, batteryPct, alertActive ? "ON" : "off", DISPLAY_NAMES[displayType]);
 #endif
 }
 
 void handleButtons() {
   static bool upPrev = HIGH, downPrev = HIGH;
   static unsigned long upDownMs = 0, downDownMs = 0;
-  static bool upLongDone = false, downLongDone = false;
+  static bool upLongDone = false, upCombo = false, downCombo = false;
   bool upNow = digitalRead(BTN_UP_PIN);
   bool downNow = digitalRead(BTN_DOWN_PIN);
   unsigned long now = millis();
 
-  // UP: short = limit +STEP, long = cycle brightness
+  // DOWN pressed (checked first, so a press of both in the same loop counts as a combo)
+  if (downNow == LOW && downPrev == HIGH) {
+    downDownMs = now;
+    downCombo = false;
+  }
+
+  // UP: short = limit +STEP, long = cycle brightness.
+  //     Short press while Down is held = next display type.
   if (upNow == LOW && upPrev == HIGH) {
     upDownMs = now;
     upLongDone = false;
+    upCombo = (downNow == LOW);
+    if (upCombo) downCombo = true;          // releasing Down later does nothing
   }
-  if (upNow == LOW && !upLongDone && now - upDownMs >= LONG_PRESS_MS) {
+  if (upNow == LOW && !upCombo && !upLongDone && now - upDownMs >= LONG_PRESS_MS) {
     upLongDone = true;
     cycleBrightness();
   }
-  if (upNow == HIGH && upPrev == LOW && !upLongDone) {
-    thresholdKmh += STEP;
-    if (thresholdKmh > 200.0f) thresholdKmh = 200.0f;
-    lastButtonMs = now;
-    currentMode = MODE_SET;
-    showSetScreen();
+  if (upNow == HIGH && upPrev == LOW) {
+    if (upCombo) cycleDisplayType();
+    else if (!upLongDone) setLimit(thresholdKmh + STEP);
+    upCombo = false;
   }
 
-  // DOWN: short = limit -STEP, long = GPS power save on/off
-  if (downNow == LOW && downPrev == HIGH) {
-    downDownMs = now;
-    downLongDone = false;
-  }
-  if (downNow == LOW && !downLongDone && now - downDownMs >= LONG_PRESS_MS) {
-    downLongDone = true;
-    toggleGpsPowerSave();
-  }
-  if (downNow == HIGH && downPrev == LOW && !downLongDone) {
-    thresholdKmh -= STEP;
-    if (thresholdKmh < 5.0f) thresholdKmh = 5.0f;
-    lastButtonMs = now;
-    currentMode = MODE_SET;
-    showSetScreen();
+  // DOWN released: short = limit -STEP, long = GPS power save on/off.
+  // Acted on at release, so holding Down for the display combo never switches power save.
+  if (downNow == HIGH && downPrev == LOW) {
+    if (!downCombo) {
+      if (now - downDownMs >= LONG_PRESS_MS) toggleGpsPowerSave();
+      else setLimit(thresholdKmh - STEP);
+    }
+    downCombo = false;
   }
 
   upPrev = upNow;
   downPrev = downNow;
+}
+
+// Shared by the buttons and the web portal: new limit (rounded to STEP, 5..200 km/h),
+// shown on the set screen for 5 s like a button press.
+void setLimit(float v) {
+  v = roundf(v / STEP) * STEP;
+  if (v > 200.0f) v = 200.0f;
+  if (v < 5.0f) v = 5.0f;
+  thresholdKmh = v;
+  lastButtonMs = millis();
+  currentMode = MODE_SET;
+  showSetScreen();
 }
 
 void ubxSend(uint8_t cls, uint8_t id, const uint8_t *payload, uint8_t len) {
@@ -452,7 +521,10 @@ bool applyGpsPowerMode(bool saveOn) {
 }
 
 void toggleGpsPowerSave() {
-  bool target = !gpsPowerSave;
+  setGpsPowerSave(!gpsPowerSave);
+}
+
+void setGpsPowerSave(bool target) {
   if (applyGpsPowerMode(target)) {
     gpsPowerSave = target;
     prefs.putBool("gpsps", gpsPowerSave);
@@ -470,8 +542,8 @@ void showToast(const char *l1, const char *l2) {
 }
 
 void drawToast() {
-  int16_t W = display.width(), H = display.height();
-  display.fillScreen(COL_BG);
+  int16_t W = gfx->width(), H = gfx->height();
+  gfx->fillScreen(COL_BG);
   float s1 = fitScale(strlen(toastLine1), hasTop ? tS : bS, W - 4);
   drawTextCentered(toastLine1, 0, s1, COL_DIM);
   int16_t y2 = capH(s1) + rnd(s1) + gapPx;         // room for descenders (p, y, g) and a gap
@@ -485,14 +557,20 @@ void drawToast() {
 }
 
 void cycleBrightness() {
-  brightnessLevel = (brightnessLevel + 1) % 3;   // 0 -> 1 -> 2 -> 0 ...
+  setBrightness((brightnessLevel + 1) % 3);      // 0 -> 1 -> 2 -> 0 ...
+}
+
+void setBrightness(int level) {
+  if (level < 0) level = 0;
+  if (level > 2) level = 2;
+  brightnessLevel = level;
   applyBrightness();
   forceRedraw = true;
   if (currentMode == MODE_SET) showSetScreen();
 }
 
 void initBacklight() {
-#if (DISPLAY_TYPE == 2 || DISPLAY_TYPE == 3) && TFT_BL_PIN >= 0
+#if TFT_BL_PIN >= 0
   #if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
     ledcAttach(TFT_BL_PIN, TFT_BL_PWM_HZ, 8);
   #else
@@ -503,16 +581,18 @@ void initBacklight() {
 }
 
 void applyBrightness() {
-#if DISPLAY_TYPE == 0 || DISPLAY_TYPE == 1
-  if (brightnessLevel == 2) {
-    display.dim(false);
-  } else if (brightnessLevel == 1) {
-    display.ssd1306_command(SSD1306_SETCONTRAST);
-    display.ssd1306_command(0x40);
-  } else {
-    display.dim(true);
+  if (oled) {
+    if (brightnessLevel == 2) {
+      oled->dim(false);
+    } else if (brightnessLevel == 1) {
+      oled->ssd1306_command(SSD1306_SETCONTRAST);
+      oled->ssd1306_command(0x40);
+    } else {
+      oled->dim(true);
+    }
+    return;
   }
-#elif TFT_BL_PIN >= 0
+#if TFT_BL_PIN >= 0
   static const uint8_t duty[3] = {25, 100, 255};
   uint8_t d = duty[brightnessLevel];
   #if !TFT_BL_ACTIVE_HIGH
@@ -539,7 +619,7 @@ void updateAlert() {
     buzzerState = false;
   }
 
-  if (!alertActive) return;
+  if (!alertActive) { alertIntervalMs = 0; return; }
 
   unsigned long elapsed = millis() - alertStartMs;
   unsigned long interval;
@@ -553,6 +633,7 @@ void updateAlert() {
   } else {
     interval = 0;
   }
+  alertIntervalMs = interval;
 
   if (interval == 0) {
     digitalWrite(BUZZER_PIN, HIGH);
@@ -577,8 +658,8 @@ float readBatteryPercent() {
 }
 
 void showSetScreen() {
-  int16_t W = display.width();
-  display.fillScreen(COL_BG);
+  int16_t W = gfx->width();
+  gfx->fillScreen(COL_BG);
 
   char v[8];
   snprintf(v, sizeof(v), "%.1f", thresholdKmh);
@@ -586,7 +667,7 @@ void showSetScreen() {
   drawTextCentered(v, speedTop + (speedH - capH(sc)) / 2, sc, COL_LIMIT);
 
   if (hasTop) {
-    display.drawFastHLine(0, divY, W, COL_DIM);
+    gfx->drawFastHLine(0, divY, W, COL_DIM);
     drawTextCentered("LIMIT (km/h)", 0, tS, COL_DIM);
     char b[12];
     snprintf(b, sizeof(b), "Bat %d%%", batteryPct);
@@ -602,7 +683,7 @@ void drawRun(int speedInt, int sats, int bat, bool show, bool over) {
   static int lSpeed = -1, lN = -1, lSats = -1, lBat = -1;
   static float lLimit = -1;
   static bool lShow = false, lOver = false, lPs = false;
-  int16_t W = display.width(), H = display.height();
+  int16_t W = gfx->width(), H = gfx->height();
   bool full = forceRedraw;
   bool changed = false;
   int n = (speedInt >= 100) ? 3 : 2;                      // digits shown, the speed is as large as possible
@@ -610,14 +691,14 @@ void drawRun(int speedInt, int sats, int bat, bool show, bool over) {
 
   if (full) {
     forceRedraw = false;
-    display.fillScreen(COL_BG);
-    if (hasTop) display.drawFastHLine(0, divY, W, COL_DIM);
+    gfx->fillScreen(COL_BG);
+    if (hasTop) gfx->drawFastHLine(0, divY, W, COL_DIM);
     changed = true;
   }
 
   // Top line: satellites (+ PS) on the left, battery on the right
   if (hasTop && (full || statusChanged)) {
-    display.fillRect(0, 0, W, divY, COL_BG);
+    gfx->fillRect(0, 0, W, divY, COL_BG);
     char l[16];
     snprintf(l, sizeof(l), "SAT %d", sats);
     drawText(1, 0, l, tS, sats >= 4 ? COL_GREEN : COL_ORANGE);
@@ -630,7 +711,7 @@ void drawRun(int speedInt, int sats, int bat, bool show, bool over) {
 
   // Middle: the speed, red over the limit, blank during the flash-off phase
   if (full || speedInt != lSpeed || n != lN || show != lShow || over != lOver) {
-    display.fillRect(0, speedTop, W, speedH, COL_BG);
+    gfx->fillRect(0, speedTop, W, speedH, COL_BG);
     if (show) {
       char s[8];
       snprintf(s, sizeof(s), "%*d", n, speedInt > 999 ? 999 : speedInt);
@@ -642,7 +723,7 @@ void drawRun(int speedInt, int sats, int bat, bool show, bool over) {
 
   // Bottom line: the limit (on the 128x32 OLED also satellites and battery)
   if (full || thresholdKmh != lLimit || (!hasTop && statusChanged)) {
-    display.fillRect(0, bottomY, W, H - bottomY, COL_BG);
+    gfx->fillRect(0, bottomY, W, H - bottomY, COL_BG);
     char opt[3][24];
     if (hasTop) {
       snprintf(opt[0], sizeof(opt[0]), "LIMIT %.1f", thresholdKmh);
@@ -675,3 +756,306 @@ void updateDisplay() {
   bool show = !alertActive || displayOn;
   drawRun(speedInt, sats, batteryPct, show, alertActive);
 }
+
+// ========== WEB PORTAL ==========
+#if PORTAL_ENABLE
+
+WebServer server(80);
+DNSServer dnsServer;
+bool portalOn = false;
+unsigned long portalLastClientMs = 0;
+
+static const char PORTAL_HTML[] PROGMEM = R"HTML(<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Speed Advisor</title>
+<style>
+body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:#000;color:#fff;text-align:center;-webkit-user-select:none;user-select:none}
+.top{display:flex;justify-content:space-between;padding:10px 14px;font-size:18px;color:#aaa}
+#spd{font-size:42vw;font-weight:700;line-height:1;margin:2px 0;font-variant-numeric:tabular-nums}
+#unit{color:#888;margin-top:-6px;font-size:18px}
+#warn{visibility:hidden;background:#e00;color:#fff;font-size:26px;font-weight:700;padding:10px;margin:6px 10px;border-radius:10px}
+body.over #spd{color:#f22}
+body.over #warn{visibility:visible}
+body.flash{background:#600}
+.card{background:#161616;border-radius:14px;margin:10px;padding:12px}
+.lbl{color:#888;font-size:13px;letter-spacing:1px;margin-bottom:6px}
+.row{display:flex;justify-content:center;align-items:center;flex-wrap:wrap}
+.lim{font-size:44px;color:#fd0;font-weight:700;min-width:150px;display:inline-block}
+button{background:#333;color:#fff;border:0;border-radius:10px;font-size:22px;padding:12px 18px;margin:4px;min-width:64px}
+#d0,#d1,#d2,#d3{font-size:17px;padding:12px 10px}
+button:active{background:#555}
+button.on{background:#0a7}
+input{font-size:22px;width:100px;padding:10px;border-radius:10px;border:0;text-align:center;margin:4px}
+#link{color:#f80}
+</style></head><body>
+<div class="top"><span id="sat">SAT -</span><span id="link"></span><span id="bat">--%</span></div>
+<div id="warn">SLOW DOWN</div>
+<div id="spd">--</div><div id="unit">km/h</div>
+<div class="card"><div class="lbl">LIMIT (km/h)</div>
+<div class="row"><button onclick="api('limit?d=-1')">&minus;</button><span class="lim" id="lim">--</span><button onclick="api('limit?d=1')">+</button></div>
+<div class="row"><input id="limIn" type="number" step="0.5" min="5" max="200" inputmode="decimal" placeholder="km/h"><button onclick="setLim()">Set</button></div></div>
+<div class="card"><div class="lbl">BRIGHTNESS</div><div class="row">
+<button id="b0" onclick="api('bright?l=0')">Low</button><button id="b1" onclick="api('bright?l=1')">Mid</button><button id="b2" onclick="api('bright?l=2')">High</button></div></div>
+<div class="card"><div class="lbl">DISPLAY TYPE</div><div class="row">
+<button id="d0" onclick="api('display?t=0')">OLED 128x32</button><button id="d1" onclick="api('display?t=1')">OLED 128x64</button>
+<button id="d2" onclick="api('display?t=2')">ST7735</button><button id="d3" onclick="api('display?t=3')">ST7789</button></div></div>
+<div class="card"><div class="lbl">GPS POWER SAVE</div><div class="row"><button id="ps" onclick="api('gpsps?on='+(S.ps?0:1))">--</button></div></div>
+<div class="card"><div class="lbl">PHONE ALERT</div><div class="row"><button id="snd" onclick="togSnd()">Sound OFF</button></div></div>
+<script>
+var S={},fails=0,snd=false,ac=null,gain=null,beepOn=false;
+function $(i){return document.getElementById(i)}
+function api(p){return fetch('/api/'+p).then(function(r){return r.json()}).then(show).catch(function(){})}
+function setLim(){var v=parseFloat($('limIn').value);if(!isNaN(v))api('limit?v='+v);$('limIn').value='';$('limIn').blur()}
+function show(s){
+ S=s;fails=0;$('link').textContent='';
+ $('spd').textContent=s.fix?Math.round(s.spd):'--';
+ $('lim').textContent=s.lim.toFixed(1);
+ $('sat').textContent='SAT '+s.sats+(s.ps?' PS':'');
+ $('sat').style.color=s.sats>=4?'#0c0':'#f80';
+ $('bat').textContent=s.bat+'%';$('bat').style.color=s.bat<=20?'#f22':'#aaa';
+ for(var i=0;i<3;i++)$('b'+i).className=(s.br==i)?'on':'';
+ for(var i=0;i<4;i++)$('d'+i).className=(s.disp==i)?'on':'';
+ $('ps').textContent=s.ps?'ON':'OFF';$('ps').className=s.ps?'on':'';
+ document.body.classList.toggle('over',!!s.over);
+}
+function poll(){
+ fetch('/api/status').then(function(r){return r.json()}).then(show)
+ .catch(function(){if(++fails>2){$('link').textContent='NO LINK';S.over=0;document.body.classList.remove('over')}})
+ .then(function(){setTimeout(poll,500)});
+}
+function togSnd(){
+ snd=!snd;
+ if(snd&&!ac){
+  var C=window.AudioContext||window.webkitAudioContext;
+  if(C){ac=new C();var o=ac.createOscillator();gain=ac.createGain();o.type='square';o.frequency.value=2400;
+  gain.gain.value=0;o.connect(gain);gain.connect(ac.destination);o.start();}
+ }
+ if(ac&&ac.resume)ac.resume();
+ if(!snd&&gain)gain.gain.value=0;
+ $('snd').textContent=snd?'Sound ON':'Sound OFF';$('snd').className=snd?'on':'';
+}
+// Same rhythm as the buzzer: on/off every "iv" ms, continuous tone when iv is 0
+setInterval(function(){
+ var on=false;
+ if(S.over)on=(S.iv==0)||(Math.floor(Date.now()/S.iv)%2==0);
+ document.body.classList.toggle('flash',on);
+ if(gain)gain.gain.value=(snd&&on)?0.25:0;
+ if(navigator.vibrate){if(on&&!beepOn)navigator.vibrate(S.iv==0?60000:S.iv);else if(!on&&beepOn)navigator.vibrate(0);}
+ beepOn=on;
+},50);
+poll();
+</script></body></html>)HTML";
+
+void portalSendStatus() {
+  bool fix = gps.speed.isValid() && gps.speed.age() < 2000;
+  int sats = gps.satellites.isValid() ? (int)gps.satellites.value() : 0;
+  char buf[192];
+  snprintf(buf, sizeof(buf),
+           "{\"spd\":%.1f,\"fix\":%d,\"lim\":%.1f,\"sats\":%d,\"bat\":%d,\"over\":%d,\"iv\":%lu,\"br\":%d,\"ps\":%d,\"disp\":%d}",
+           fix ? gps.speed.kmph() : 0.0, fix ? 1 : 0, thresholdKmh, sats, batteryPct,
+           alertActive ? 1 : 0, alertIntervalMs, brightnessLevel, gpsPowerSave ? 1 : 0, displayType);
+  server.sendHeader("Cache-Control", "no-store");
+  server.send(200, "application/json", buf);
+}
+
+// Every unknown address (the phone's captive-portal checks included) is sent to the portal page
+void portalRedirect() {
+  server.sendHeader("Location", String("http://") + WiFi.softAPIP().toString() + "/", true);
+  server.send(302, "text/plain", "");
+}
+
+void portalStart() {
+  WiFi.mode(WIFI_AP);
+  WiFi.softAP(PORTAL_SSID, strlen(PORTAL_PASS) >= 8 ? PORTAL_PASS : NULL, PORTAL_CHANNEL);
+  WiFi.setTxPower(PORTAL_TX_POWER);
+  delay(100);
+
+  dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
+  dnsServer.start(53, "*", WiFi.softAPIP());          // answer every name with our own address
+
+  server.on("/", HTTP_GET, []() {
+    server.sendHeader("Cache-Control", "no-store");
+    server.send(200, "text/html", PORTAL_HTML);
+  });
+  server.on("/api/status", HTTP_GET, portalSendStatus);
+  server.on("/api/limit", HTTP_GET, []() {             // ?d=1 / ?d=-1 one step, ?v=95.5 exact value
+    if (server.hasArg("v")) setLimit(server.arg("v").toFloat());
+    else if (server.hasArg("d")) setLimit(thresholdKmh + (server.arg("d").toInt() < 0 ? -STEP : STEP));
+    portalSendStatus();
+  });
+  server.on("/api/bright", HTTP_GET, []() {            // ?l=0..2, no argument = next level
+    if (server.hasArg("l")) setBrightness(server.arg("l").toInt());
+    else cycleBrightness();
+    portalSendStatus();
+  });
+  server.on("/api/gpsps", HTTP_GET, []() {             // ?on=1 / ?on=0, no argument = toggle
+    bool target = server.hasArg("on") ? server.arg("on").toInt() != 0 : !gpsPowerSave;
+    if (target != gpsPowerSave) setGpsPowerSave(target);
+    portalSendStatus();
+  });
+  server.on("/api/display", HTTP_GET, []() {           // ?t=0..3, no argument = next type
+    if (server.hasArg("t")) setDisplayType(server.arg("t").toInt());
+    else cycleDisplayType();
+    portalSendStatus();
+  });
+  server.on("/favicon.ico", HTTP_GET, []() { server.send(204); });
+  server.onNotFound(portalRedirect);
+  server.begin();
+
+  portalOn = true;
+  portalLastClientMs = millis();
+  Serial.printf("Portal: Wi-Fi \"%s\"  http://%s/\n", PORTAL_SSID, WiFi.softAPIP().toString().c_str());
+}
+
+void portalStop() {
+  server.stop();
+  dnsServer.stop();
+  WiFi.softAPdisconnect(true);
+  WiFi.mode(WIFI_OFF);
+  portalOn = false;
+  Serial.println("Portal: Wi-Fi off (no phone connected)");
+  showToast("Wi-Fi portal", "OFF");
+}
+
+void portalLoop() {
+  if (!portalOn) return;
+  dnsServer.processNextRequest();
+  server.handleClient();
+#if PORTAL_IDLE_OFF_MIN > 0
+  if (WiFi.softAPgetStationNum() > 0) {
+    portalLastClientMs = millis();
+  } else if (millis() - portalLastClientMs > PORTAL_IDLE_OFF_MIN * 60000UL) {
+    portalStop();
+  }
+#endif
+}
+
+#endif  // PORTAL_ENABLE
+
+// ========== BLUETOOTH LE ==========
+// One service with two characteristics:
+//
+// STATUS  (read + notify, 12 bytes, little-endian), sent every BLE_NOTIFY_MS:
+//   0-1  speed x10 (km/h)        2-3  limit x10 (km/h)
+//   4    satellites              5    battery %
+//   6    flags: bit0 GPS fix, bit1 over the limit, bit2 GPS power save, bit3 Wi-Fi portal on
+//   7    brightness 0..2         8    display type 0..3
+//   9    reserved               10-11 beep interval ms (0 = continuous tone)
+//
+// COMMAND (write):
+//   01 lo hi   set the limit, value x10 (e.g. 95.5 km/h = 955)
+//   02 s       one step: 01 = +0.5, FF = -0.5
+//   03 l       brightness 0..2 (FF = next)
+//   04 v       GPS power save 0 / 1 (FF = toggle)
+//   05 t       display type 0..3 (FF = next)
+#if BLE_ENABLE
+
+#define BLE_SERVICE_UUID  "5a1e0001-7b3c-4d2a-9f10-53504545444f"
+#define BLE_STATUS_UUID   "5a1e0002-7b3c-4d2a-9f10-53504545444f"
+#define BLE_COMMAND_UUID  "5a1e0003-7b3c-4d2a-9f10-53504545444f"
+
+NimBLEServer *bleServer = nullptr;
+NimBLECharacteristic *bleStatusChr = nullptr;
+QueueHandle_t bleCmdQueue = nullptr;   // commands arrive on the BLE task; loop() carries them out
+
+struct BleCmd { uint8_t b[4]; };
+
+class BleCommandCallbacks : public NimBLECharacteristicCallbacks {
+  void queueCmd(NimBLECharacteristic *c) {
+    auto v = c->getValue();
+    BleCmd cmd = {{0, 0, 0, 0}};
+    size_t n = v.length();
+    if (n == 0) return;
+    if (n > sizeof(cmd.b)) n = sizeof(cmd.b);
+    memcpy(cmd.b, v.data(), n);
+    xQueueSend(bleCmdQueue, &cmd, 0);
+  }
+ public:
+  // NimBLE-Arduino 1.x and 2.x call different versions of onWrite; both are here
+  void onWrite(NimBLECharacteristic *c) { queueCmd(c); }
+  void onWrite(NimBLECharacteristic *c, NimBLEConnInfo &info) { queueCmd(c); }
+};
+
+void bleStart() {
+  bleCmdQueue = xQueueCreate(8, sizeof(BleCmd));
+  NimBLEDevice::init(BLE_NAME);
+  bleServer = NimBLEDevice::createServer();
+  NimBLEService *svc = bleServer->createService(BLE_SERVICE_UUID);
+  bleStatusChr = svc->createCharacteristic(BLE_STATUS_UUID, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
+  NimBLECharacteristic *cmdChr =
+      svc->createCharacteristic(BLE_COMMAND_UUID, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
+  cmdChr->setCallbacks(new BleCommandCallbacks());
+  svc->start();
+
+  // Advertising: the service in the advertisement, the name in the scan response
+  NimBLEAdvertising *adv = NimBLEDevice::getAdvertising();
+  NimBLEAdvertisementData advData, scanData;
+  advData.setFlags(BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP);
+  advData.setCompleteServices(NimBLEUUID(BLE_SERVICE_UUID));
+  scanData.setName(BLE_NAME);
+  adv->setAdvertisementData(advData);
+  adv->setScanResponseData(scanData);
+  adv->start();
+  bleUpdateStatus(false);
+  Serial.println("BLE: advertising as \"" BLE_NAME "\"");
+}
+
+void bleUpdateStatus(bool notify) {
+  bool fix = gps.speed.isValid() && gps.speed.age() < 2000;
+  uint16_t spd = fix ? (uint16_t)(gps.speed.kmph() * 10.0 + 0.5) : 0;
+  uint16_t lim = (uint16_t)(thresholdKmh * 10.0f + 0.5f);
+  uint16_t iv = (uint16_t)(alertIntervalMs > 65535 ? 65535 : alertIntervalMs);
+  bool wifi = false;
+#if PORTAL_ENABLE
+  wifi = portalOn;
+#endif
+  uint8_t d[12];
+  d[0] = spd & 0xFF; d[1] = spd >> 8;
+  d[2] = lim & 0xFF; d[3] = lim >> 8;
+  d[4] = gps.satellites.isValid() ? (uint8_t)gps.satellites.value() : 0;
+  d[5] = (uint8_t)batteryPct;
+  d[6] = (fix ? 1 : 0) | (alertActive ? 2 : 0) | (gpsPowerSave ? 4 : 0) | (wifi ? 8 : 0);
+  d[7] = (uint8_t)brightnessLevel;
+  d[8] = (uint8_t)displayType;
+  d[9] = 0;
+  d[10] = iv & 0xFF; d[11] = iv >> 8;
+  bleStatusChr->setValue(d, sizeof(d));
+  if (notify) bleStatusChr->notify();
+}
+
+// (plain byte pointer: Arduino puts function prototypes above the struct definitions)
+void bleRunCommand(const uint8_t *b) {
+  switch (b[0]) {
+    case 0x01: setLimit((b[1] | (b[2] << 8)) / 10.0f); break;
+    case 0x02: setLimit(thresholdKmh + ((int8_t)b[1] < 0 ? -STEP : STEP)); break;
+    case 0x03: if (b[1] == 0xFF) cycleBrightness(); else setBrightness(b[1]); break;
+    case 0x04: {
+      bool target = (b[1] == 0xFF) ? !gpsPowerSave : b[1] != 0;
+      if (target != gpsPowerSave) setGpsPowerSave(target);
+      break;
+    }
+    case 0x05: if (b[1] == 0xFF) cycleDisplayType(); else setDisplayType(b[1]); break;
+  }
+}
+
+void bleLoop() {
+  static unsigned long lastNotifyMs = 0;
+  BleCmd c;
+  bool changed = false;
+  while (xQueueReceive(bleCmdQueue, &c, 0) == pdTRUE) {
+    bleRunCommand(c.b);
+    changed = true;
+  }
+  if (bleServer->getConnectedCount() > 0) {
+    if (changed || millis() - lastNotifyMs >= BLE_NOTIFY_MS) {
+      lastNotifyMs = millis();
+      bleUpdateStatus(true);
+    }
+  } else {
+    bleUpdateStatus(false);
+    if (!NimBLEDevice::getAdvertising()->isAdvertising()) NimBLEDevice::getAdvertising()->start();
+  }
+}
+
+#endif  // BLE_ENABLE
