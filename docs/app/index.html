@@ -7,7 +7,10 @@
 <link rel="icon" href="icon-192.png">
 <style>
 body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:#000;color:#fff;text-align:center;-webkit-user-select:none;user-select:none}
-.top{display:flex;justify-content:space-between;padding:10px 14px;font-size:18px;color:#aaa}
+.top{display:flex;justify-content:space-between;align-items:center;padding:6px 8px 6px 14px;font-size:18px;color:#aaa}
+.top .r{display:flex;align-items:center}
+#gear{background:none;padding:6px;margin:0 0 0 8px;min-width:0;line-height:0}
+#gear svg{width:28px;height:28px;fill:#aaa}
 #spd{font-size:42vw;font-weight:700;line-height:1;margin:2px 0;font-variant-numeric:tabular-nums}
 #unit{color:#888;margin-top:-6px;font-size:18px}
 #warn{visibility:hidden;background:#e00;color:#fff;font-size:26px;font-weight:700;padding:10px;margin:6px 10px;border-radius:10px}
@@ -28,21 +31,43 @@ input{font-size:22px;width:100px;padding:10px;border-radius:10px;border:0;text-a
 #conn.ok{background:#333}
 #state{color:#f80;font-size:16px;min-height:20px}
 #help{color:#888;font-size:14px;padding:0 16px}
+.hdr{display:flex;justify-content:space-between;align-items:center}
+.hdr .lbl{margin:0}
+#limS{font-size:24px;color:#fd0;font-weight:700}
+.tog{font-size:16px;padding:8px 14px;min-width:0;margin:0}
+#limBody{display:none;margin-top:8px}
+#limCard.open #limBody{display:block}
+#settings{display:none}
+body.set #main{display:none}
+body.set #settings{display:block}
+.shdr{display:flex;align-items:center;padding:4px 10px}
+.shdr h2{font-size:22px;margin:0 0 0 6px;font-weight:600}
+.back{font-size:18px;padding:10px 14px;min-width:0}
+body.set #warn{display:none}
+body.set.over #warn{display:block}
+body.set #gear{visibility:hidden}
 </style></head><body>
-<div class="top"><span id="sat">SAT -</span><span id="state"></span><span id="bat">--%</span></div>
+<div class="top"><span id="sat">SAT -</span><span id="state"></span><span class="r"><span id="bat">--%</span>
+<button id="gear" onclick="openSet()" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.2"/><rect x="10.4" y="1.6" width="3.2" height="5" rx="0.8" transform="rotate(0 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="5" rx="0.8" transform="rotate(45 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="5" rx="0.8" transform="rotate(90 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="5" rx="0.8" transform="rotate(135 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="5" rx="0.8" transform="rotate(180 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="5" rx="0.8" transform="rotate(225 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="5" rx="0.8" transform="rotate(270 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="5" rx="0.8" transform="rotate(315 12 12)"/><circle cx="12" cy="12" r="3" fill="#000"/></svg></button></span></div>
 <div id="warn">SLOW DOWN</div>
+<div id="main">
 <div id="spd">--</div><div id="unit">km/h</div>
 <div class="row"><button id="conn" onclick="connClick()">Connect</button><button id="snd" onclick="togSnd()">Sound OFF</button></div>
 <p id="help"></p>
-<div class="card"><div class="lbl">LIMIT (km/h)</div>
-<div class="row"><button class="c" onclick="send([2,0xFF])">&minus;</button><span class="lim" id="lim">--</span><button class="c" onclick="send([2,1])">+</button></div>
-<div class="row"><input id="limIn" type="number" step="0.5" min="5" max="200" inputmode="decimal" placeholder="km/h"><button class="c" onclick="setLim()">Set</button></div></div>
+<div class="card" id="limCard"><div class="hdr"><span class="lbl">LIMIT</span><span id="limS">--</span><button class="tog" id="limTog" onclick="togLim()">Show</button></div>
+<div id="limBody">
+<div class="row"><button class="c" onclick="step(-1)">&minus;</button><span class="lim" id="lim">--</span><button class="c" onclick="step(1)">+</button></div>
+<div class="row"><input id="limIn" type="number" step="0.5" min="5" max="200" inputmode="decimal" placeholder="km/h"><button class="c" onclick="setLim()">Set</button></div></div></div>
 <div class="card"><div class="lbl">BRIGHTNESS</div><div class="row">
 <button class="c" id="b0" onclick="send([3,0])">Low</button><button class="c" id="b1" onclick="send([3,1])">Mid</button><button class="c" id="b2" onclick="send([3,2])">High</button></div></div>
+</div>
+<div id="settings">
+<div class="shdr"><button class="back" onclick="closeSet()">&lsaquo; Back</button><h2>Settings</h2></div>
 <div class="card"><div class="lbl">DISPLAY TYPE</div><div class="row small">
 <button class="c" id="d0" onclick="send([5,0])">OLED 128x32</button><button class="c" id="d1" onclick="send([5,1])">OLED 128x64</button>
 <button class="c" id="d2" onclick="send([5,2])">ST7735</button><button class="c" id="d3" onclick="send([5,3])">ST7789</button></div></div>
 <div class="card"><div class="lbl">GPS POWER SAVE</div><div class="row"><button class="c" id="ps" onclick="send([4,0xFF])">--</button></div></div>
+</div>
 <script>
 // Must match the UUIDs in SpeedAdvisor.ino
 var SVC='5a1e0001-7b3c-4d2a-9f10-53504545444f',ST='5a1e0002-7b3c-4d2a-9f10-53504545444f',CMD='5a1e0003-7b3c-4d2a-9f10-53504545444f';
@@ -88,7 +113,7 @@ function show(v){
  var spd=v.getUint16(0,true)/10,lim=v.getUint16(2,true)/10,sats=v.getUint8(4),bat=v.getUint8(5),f=v.getUint8(6);
  S={fix:f&1,over:(f>>1)&1,ps:(f>>2)&1,br:v.getUint8(7),disp:v.getUint8(8),iv:v.getUint16(10,true)};
  $('spd').textContent=S.fix?Math.round(spd):'--';
- $('lim').textContent=lim.toFixed(1);
+ $('lim').textContent=lim.toFixed(1);$('limS').textContent=lim.toFixed(1)+' km/h';
  $('sat').textContent='SAT '+sats+(S.ps?' PS':'');$('sat').style.color=sats>=4?'#0c0':'#f80';
  $('bat').textContent=bat+'%';$('bat').style.color=bat<=20?'#f22':'#aaa';
  for(var i=0;i<3;i++)$('b'+i).className='c'+(S.br==i?' on':'');
@@ -101,11 +126,23 @@ function send(bytes){
  if(!cmdChr)return;
  busy=busy.then(function(){return cmdChr.writeValueWithResponse(new Uint8Array(bytes))}).catch(function(){});
 }
+// Limit card: hidden after Set, or 4 s after the last -/+ press
+var limTimer=null,setFromMain=false;
+function togLim(open){
+ var c=$('limCard');if(open===undefined)open=!c.classList.contains('open');
+ c.classList.toggle('open',open);$('limTog').textContent=open?'Hide':'Show';clearTimeout(limTimer);
+}
+function step(d){send([2,d<0?0xFF:1]);clearTimeout(limTimer);limTimer=setTimeout(function(){togLim(false)},4000)}
 function setLim(){
  var v=parseFloat($('limIn').value);
- if(!isNaN(v)){var x=Math.round(v*10);send([1,x&255,x>>8])}
+ if(!isNaN(v)){var x=Math.round(v*10);send([1,x&255,x>>8]);togLim(false)}
  $('limIn').value='';$('limIn').blur();
 }
+// Settings view (#settings), so the phone's back button returns to the main view
+function openSet(){setFromMain=true;location.hash='settings'}
+function closeSet(){if(setFromMain)history.back();else location.hash=''}
+function route(){var s=location.hash=='#settings';document.body.classList.toggle('set',s);if(!s)setFromMain=false;window.scrollTo(0,0)}
+window.addEventListener('hashchange',route);route();
 
 function initAudio(){
  if(ac)return;

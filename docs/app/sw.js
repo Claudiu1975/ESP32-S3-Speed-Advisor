@@ -1,6 +1,6 @@
 // Offline cache: after the first visit the app opens without internet.
 // Change VERSION when any app file changes, so phones pick up the new files.
-const VERSION = 'speedadv-app-1';
+const VERSION = 'speedadv-app-2';
 const FILES = ['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
