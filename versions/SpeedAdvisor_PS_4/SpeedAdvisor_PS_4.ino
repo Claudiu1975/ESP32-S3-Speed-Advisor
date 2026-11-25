@@ -31,6 +31,13 @@
   #include <WiFi.h>
   #include <WebServer.h>
   #include <DNSServer.h>
+  // Declared here because the Arduino IDE does not find functions that come after
+  // the long HTML text (raw string) further down
+  void portalStart();
+  void portalStop();
+  void portalLoop();
+  void portalSendStatus();
+  void portalRedirect();
 #endif
 
 // ========== DISPLAY SELECTION ==========

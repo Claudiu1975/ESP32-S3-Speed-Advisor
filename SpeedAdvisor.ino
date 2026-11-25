@@ -31,6 +31,13 @@
   #include <WiFi.h>
   #include <WebServer.h>
   #include <DNSServer.h>
+  // Declared here because the Arduino IDE does not find functions that come after
+  // the long HTML text (raw string) further down
+  void portalStart();
+  void portalStop();
+  void portalLoop();
+  void portalSendStatus();
+  void portalRedirect();
 #endif
 
 // ========== BLUETOOTH LE ==========
@@ -43,6 +50,11 @@
 
 #if BLE_ENABLE
   #include <NimBLEDevice.h>
+  // Declared here for the same reason as the portal functions above
+  void bleStart();
+  void bleLoop();
+  void bleUpdateStatus(bool notify);
+  void bleRunCommand(const uint8_t *b);
 #endif
 
 // ========== DISPLAY SELECTION ==========
