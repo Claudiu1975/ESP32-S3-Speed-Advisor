@@ -1,4 +1,4 @@
-// Version: PS_6 (Bluetooth LE: the Android web app shows the speed, warns and changes the settings)
+// Version: PS_7 (phone pages: settings view behind a gear icon, limit card with show/hide)
 /*
   ESP32-S3 Super Mini Speed Advisor
   Supports SSD1306 (128x32 / 128x64), ST7735S, ST7789V
@@ -783,7 +783,10 @@ static const char PORTAL_HTML[] PROGMEM = R"HTML(<!DOCTYPE html>
 <title>Speed Advisor</title>
 <style>
 body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:#000;color:#fff;text-align:center;-webkit-user-select:none;user-select:none}
-.top{display:flex;justify-content:space-between;padding:10px 14px;font-size:18px;color:#aaa}
+.top{display:flex;justify-content:space-between;align-items:center;padding:6px 8px 6px 14px;font-size:18px;color:#aaa}
+.top .r{display:flex;align-items:center}
+#gear{background:none;padding:6px;margin:0 0 0 8px;min-width:0;line-height:0}
+#gear svg{width:28px;height:28px;fill:#aaa}
 #spd{font-size:42vw;font-weight:700;line-height:1;margin:2px 0;font-variant-numeric:tabular-nums}
 #unit{color:#888;margin-top:-6px;font-size:18px}
 #warn{visibility:hidden;background:#e00;color:#fff;font-size:26px;font-weight:700;padding:10px;margin:6px 10px;border-radius:10px}
@@ -793,36 +796,69 @@ body.flash{background:#600}
 .card{background:#161616;border-radius:14px;margin:10px;padding:12px}
 .lbl{color:#888;font-size:13px;letter-spacing:1px;margin-bottom:6px}
 .row{display:flex;justify-content:center;align-items:center;flex-wrap:wrap}
+.hdr{display:flex;justify-content:space-between;align-items:center}
+.hdr .lbl{margin:0}
+#limS{font-size:24px;color:#fd0;font-weight:700}
+.tog{font-size:16px;padding:8px 14px;min-width:0;margin:0}
+#limBody{display:none;margin-top:8px}
+#limCard.open #limBody{display:block}
 .lim{font-size:44px;color:#fd0;font-weight:700;min-width:150px;display:inline-block}
 button{background:#333;color:#fff;border:0;border-radius:10px;font-size:22px;padding:12px 18px;margin:4px;min-width:64px}
-#d0,#d1,#d2,#d3{font-size:17px;padding:12px 10px}
+.small button{font-size:17px;padding:12px 10px}
 button:active{background:#555}
 button.on{background:#0a7}
 input{font-size:22px;width:100px;padding:10px;border-radius:10px;border:0;text-align:center;margin:4px}
 #link{color:#f80}
+#settings{display:none}
+body.set #main{display:none}
+body.set #settings{display:block}
+.shdr{display:flex;align-items:center;padding:4px 10px}
+.shdr h2{font-size:22px;margin:0 0 0 6px;font-weight:600}
+.back{font-size:18px;padding:10px 14px;min-width:0}
+body.set #warn{display:none}
+body.set.over #warn{display:block}
+body.set #gear{visibility:hidden}
 </style></head><body>
-<div class="top"><span id="sat">SAT -</span><span id="link"></span><span id="bat">--%</span></div>
+<div class="top"><span id="sat">SAT -</span><span id="link"></span><span class="r"><span id="bat">--%</span>
+<button id="gear" onclick="openSet()" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.2"/><rect x="10.4" y="1.6" width="3.2" height="5" rx="0.8" transform="rotate(0 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="5" rx="0.8" transform="rotate(45 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="5" rx="0.8" transform="rotate(90 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="5" rx="0.8" transform="rotate(135 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="5" rx="0.8" transform="rotate(180 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="5" rx="0.8" transform="rotate(225 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="5" rx="0.8" transform="rotate(270 12 12)"/><rect x="10.4" y="1.6" width="3.2" height="5" rx="0.8" transform="rotate(315 12 12)"/><circle cx="12" cy="12" r="3" fill="#000"/></svg></button></span></div>
 <div id="warn">SLOW DOWN</div>
+<div id="main">
 <div id="spd">--</div><div id="unit">km/h</div>
-<div class="card"><div class="lbl">LIMIT (km/h)</div>
-<div class="row"><button onclick="api('limit?d=-1')">&minus;</button><span class="lim" id="lim">--</span><button onclick="api('limit?d=1')">+</button></div>
-<div class="row"><input id="limIn" type="number" step="0.5" min="5" max="200" inputmode="decimal" placeholder="km/h"><button onclick="setLim()">Set</button></div></div>
+<div class="card" id="limCard"><div class="hdr"><span class="lbl">LIMIT</span><span id="limS">--</span><button class="tog" id="limTog" onclick="togLim()">Show</button></div>
+<div id="limBody">
+<div class="row"><button onclick="step(-1)">&minus;</button><span class="lim" id="lim">--</span><button onclick="step(1)">+</button></div>
+<div class="row"><input id="limIn" type="number" step="0.5" min="5" max="200" inputmode="decimal" placeholder="km/h"><button onclick="setLim()">Set</button></div></div></div>
 <div class="card"><div class="lbl">BRIGHTNESS</div><div class="row">
 <button id="b0" onclick="api('bright?l=0')">Low</button><button id="b1" onclick="api('bright?l=1')">Mid</button><button id="b2" onclick="api('bright?l=2')">High</button></div></div>
-<div class="card"><div class="lbl">DISPLAY TYPE</div><div class="row">
+<div class="card"><div class="lbl">PHONE ALERT</div><div class="row"><button id="snd" onclick="togSnd()">Sound OFF</button></div></div>
+</div>
+<div id="settings">
+<div class="shdr"><button class="back" onclick="closeSet()">&lsaquo; Back</button><h2>Settings</h2></div>
+<div class="card"><div class="lbl">DISPLAY TYPE</div><div class="row small">
 <button id="d0" onclick="api('display?t=0')">OLED 128x32</button><button id="d1" onclick="api('display?t=1')">OLED 128x64</button>
 <button id="d2" onclick="api('display?t=2')">ST7735</button><button id="d3" onclick="api('display?t=3')">ST7789</button></div></div>
 <div class="card"><div class="lbl">GPS POWER SAVE</div><div class="row"><button id="ps" onclick="api('gpsps?on='+(S.ps?0:1))">--</button></div></div>
-<div class="card"><div class="lbl">PHONE ALERT</div><div class="row"><button id="snd" onclick="togSnd()">Sound OFF</button></div></div>
+</div>
 <script>
-var S={},fails=0,snd=false,ac=null,gain=null,beepOn=false;
+var S={},fails=0,snd=false,ac=null,gain=null,beepOn=false,limTimer=null,setFromMain=false;
 function $(i){return document.getElementById(i)}
 function api(p){return fetch('/api/'+p).then(function(r){return r.json()}).then(show).catch(function(){})}
-function setLim(){var v=parseFloat($('limIn').value);if(!isNaN(v))api('limit?v='+v);$('limIn').value='';$('limIn').blur()}
+// Limit card: hidden after Set, or 4 s after the last -/+ press
+function togLim(open){
+ var c=$('limCard');if(open===undefined)open=!c.classList.contains('open');
+ c.classList.toggle('open',open);$('limTog').textContent=open?'Hide':'Show';clearTimeout(limTimer);
+}
+function step(d){api('limit?d='+d);clearTimeout(limTimer);limTimer=setTimeout(function(){togLim(false)},4000)}
+function setLim(){var v=parseFloat($('limIn').value);if(!isNaN(v)){api('limit?v='+v);togLim(false)}$('limIn').value='';$('limIn').blur()}
+// Settings view (#settings), so the phone's back button returns to the main view
+function openSet(){setFromMain=true;location.hash='settings'}
+function closeSet(){if(setFromMain)history.back();else location.hash=''}
+function route(){var s=location.hash=='#settings';document.body.classList.toggle('set',s);if(!s)setFromMain=false;window.scrollTo(0,0)}
+window.addEventListener('hashchange',route);route();
 function show(s){
  S=s;fails=0;$('link').textContent='';
  $('spd').textContent=s.fix?Math.round(s.spd):'--';
- $('lim').textContent=s.lim.toFixed(1);
+ $('lim').textContent=s.lim.toFixed(1);$('limS').textContent=s.lim.toFixed(1)+' km/h';
  $('sat').textContent='SAT '+s.sats+(s.ps?' PS':'');
  $('sat').style.color=s.sats>=4?'#0c0':'#f80';
  $('bat').textContent=s.bat+'%';$('bat').style.color=s.bat<=20?'#f22':'#aaa';

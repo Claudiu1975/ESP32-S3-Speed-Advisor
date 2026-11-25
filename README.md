@@ -23,7 +23,7 @@ Designed for the ESP32-S3 Super Mini (or Zero-style boards), GY-NEO6MV2 / NEO-7M
 
 ## Versions
 
-The current version is PS_6 (`SpeedAdvisor.ino`). Every version since PS_4, with a short description, is in [`versions/`](versions/).
+The current version is PS_7 (`SpeedAdvisor.ino`). Every version since PS_4, with a short description, is in [`versions/`](versions/).
 
 ## Disclaimer
 
@@ -252,10 +252,13 @@ The board opens its own Wi-Fi network. No router or internet is needed.
 2. The page opens by itself as a "sign in to network" page. If it does not, open **http://192.168.4.1** in the browser.
 3. The page shows:
    - the live speed (big), satellites, power save and battery
-   - the limit, with − / + buttons (0.5 km/h steps) and a box to type an exact value
+   - the limit card: it shows the current limit; tap **Show** for the − / + buttons (0.5 km/h steps) and a box to type an exact value. It hides again after **Set**, or 4 seconds after the last − / + press
    - brightness Low / Mid / High (same as long press Up)
-   - GPS power save ON / OFF (same as long press Down)
-   - display type OLED 128x32 / OLED 128x64 / ST7735 / ST7789 (same as hold Down + press Up)
+   - the **gear icon** (top right) opens **Settings**:
+     - display type OLED 128x32 / OLED 128x64 / ST7735 / ST7789 (same as hold Down + press Up)
+     - GPS power save ON / OFF (same as long press Down)
+
+     **Back** (or the phone's back button) returns to the speed.
    - **Sound ON/OFF** for the phone alert
 4. Above the limit the speed turns red, "SLOW DOWN" appears and the screen flashes in the same rhythm as the buzzer (faster after 45 s, steady after 55 s). The phone vibrates too (Android). Tap **Sound ON** once to let the phone beep as well; browsers only allow sound after a tap.
 
@@ -285,7 +288,7 @@ The board also talks Bluetooth LE. The app is a web app in [`docs/app/`](docs/ap
 **Using it:**
 
 1. Tap **Connect** and choose **SpeedAdvisor** in the list. The first time, allow Chrome to use Bluetooth.
-2. The app shows the speed, satellites, battery and all the settings. Tap **Sound ON** once if the phone should beep too.
+2. The app shows the speed, satellites, battery, the limit card and the brightness, laid out like the Wi-Fi page; the display type and GPS power save are behind the gear icon. Tap **Sound ON** once if the phone should beep too.
 3. If the connection drops (out of range, board restarted), the app reconnects by itself. Tap **Disconnect** to stop.
 4. While connected the screen stays on.
 
